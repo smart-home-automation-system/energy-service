@@ -1,0 +1,3 @@
+-- The baseline of the database home-automation-energy (HAS-325): no table yet - the tables come with the
+-- tasks that store something (the readings with HAS-327 onwards). The first run proves the grant on the
+-- schema public: Flyway creates its history table there.
