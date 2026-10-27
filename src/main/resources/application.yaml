@@ -10,6 +10,30 @@ spring:
     # default LIMITED restores ThreadLocals only in "tap" and "handle", so traceId would be
     # missing from the MDC of every log statement inside a reactive chain
     context-propagation: auto
+  rabbitmq:
+    host: rabbitmq-headless
+    port: 5672
+    # the events of every device (HAS-327): the Shelly devices over MQTT and the Eaton devices from
+    # amx-service, all on amq.topic of /device, each queue bound with "#"
+    username: device
+    # no default on purpose: with one the pod would start, turn Ready and consume nothing.
+    # Without the variable the service does not start - cholewa.required-properties sees to that,
+    # the binder alone would take the placeholder for the password
+    password: ${rabbitmq-password}
+    virtual-host: /device
+    connection-timeout: 10s
+    requested-heartbeat: 10s
+    template:
+      # both default to false; without them the trace breaks at the queue
+      observation-enabled: true
+    listener:
+      simple:
+        observation-enabled: true
+        # the listener returns a Mono; with the default AUTO mode the container acks before the
+        # message is handled, so prefetch throttles nothing and the ack is sent twice
+        acknowledge-mode: manual
+        # how many events are in flight at once, the rest waits in the broker - as in light-service
+        prefetch: 3
   flyway:
     url: ${flyway-url:jdbc:postgresql://${database.host}:${database.port}/${database.name}}
     user: ${database.username}
@@ -31,11 +55,29 @@ database:
     # connection
     max-size: 2
 
+rabbitmq:
+  queue:
+    name: device.prod.energy
+
+energy:
+  # the grid meter (Shelly Pro 3EM, HAS-327): its MQTT id and its address from the manifest - no default, the
+  # address is private; a reading older than stale-after is served as stale (it publishes about every 5 s)
+  meter:
+    device-id: ${meter-device-id}
+    address: ${meter-address}
+    stale-after: PT2M
+
 cholewa:
   # refuses the start before the first bean when one of these has no value (cholewa-commons >= 1.9.0)
   required-properties:
     - property: database.password
       variable: database-password
+    - property: spring.rabbitmq.password
+      variable: rabbitmq-password
+    - property: energy.meter.device-id
+      variable: meter-device-id
+    - property: energy.meter.address
+      variable: meter-address
 
 server:
   port: 6200
@@ -76,6 +118,12 @@ spring:
   config:
     activate:
       on-profile: local
+  rabbitmq:
+    host: localhost
+
+rabbitmq:
+  queue:
+    name: device.dev.energy
 
 server:
   port: 6014
@@ -97,12 +145,28 @@ spring:
   config:
     activate:
       on-profile: test
+  # a context test starts the listener: the broker is at an address nothing listens on, so that a test cannot
+  # reach it even where the name resolves
+  rabbitmq:
+    host: localhost
+    port: 1
+    password: test
   flyway:
     enabled: false
 
 # the pool opens nothing eagerly, and Flyway is off: a context test never reaches a database
 database:
   password: test
+
+rabbitmq:
+  queue:
+    name: device.test.energy
+
+# a meter that is not the one of the house, at an address nothing listens on
+energy:
+  meter:
+    device-id: shellypro3em-000000000000
+    address: localhost:1
 
 logbook:
   format:

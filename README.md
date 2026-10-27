@@ -33,13 +33,13 @@ service will read them, keep the history and the balance of the grid (net-meteri
 alarm on a lost source, an overloaded phase or a lost grid, and charge the battery before a
 planned outage of Tauron.
 
-**Today it is the scaffold of HAS-325**: the database, the route of the gateway and one endpoint,
-the status of the sources - every one of them not known yet. What comes next:
+**Today it reads the grid meter** (HAS-327) on top of the scaffold of HAS-325: the Shelly Pro 3EM at
+the grid entry over MQTT and its RPC, a snapshot a minute in `grid_reading`, `GET /home/energy/grid`.
+The other sources are not known yet. What comes next:
 
 | Task | What |
 |---|---|
 | HAS-326 | the kind `inverter` in the device registry (`smart-home-sdk`, `database-service`) |
-| HAS-327 | the grid meter: the Shelly Pro 3EM over MQTT and RPC |
 | HAS-328 | the SOLAX inverter and its battery over the local API of its dongle |
 | HAS-331 | the balance of the grid and its history |
 
@@ -58,6 +58,11 @@ the status of the sources - every one of them not known yet. What comes next:
   its JDBC URL from them (`--flyway-url=...` overrides). **`database-password` is mandatory**: the
   service refuses to start without it (`cholewa.required-properties`). Flyway runs in `home` /
   `local` and is off under `test`. **A local run with the real values is the production database.**
+- **The broker**: `/device` as the user `device` (`rabbitmq-password`, mandatory), the queue
+  `device.prod.energy` (`device.dev.energy` under `local`, broker on `localhost`). Without a broker the
+  service starts all the same and reads the meter over its RPC.
+- **The grid meter**: `meter-device-id` (its MQTT id, `shellypro3em-<mac>`) and `meter-address` (where its
+  RPC answers) - both mandatory, from the manifest; `energy.meter.stale-after` (PT2M).
 
 # API
 
@@ -65,7 +70,8 @@ Under the base path `/home/energy`, routed by the gateway by path, every method.
 
 | Method | Path | Answer |
 |---|---|---|
-| `GET` | `/home/energy/status` | every source of energy in the order of the dashboard - `meter`, `solax`, `sofar`, `solaxCloud` - with `reachable`: `true`, `false`, or `null` while the service knows nothing of it (every source until the reading tasks) |
+| `GET` | `/home/energy/status` | every source of energy in the order of the dashboard - `meter`, `solax`, `sofar`, `solaxCloud` - with `reachable`: `true`, `false`, or `null` while the service knows nothing of it (the inverters and the cloud until their tasks), and `lastReadingAt` (house time) once a reading came. The meter is `false` after its last will on the broker |
+| `GET` | `/home/energy/grid` | the grid meter now: `phases` `a` / `b` / `c` (`voltage` V, `current` A, `activePower` W, `apparentPower` VA, `powerFactor`, `frequency` Hz), `totalActivePower` (W, positive while the house takes from the grid, negative while it returns), `importEnergy` / `exportEnergy` (kWh since the meter was set up), `direction` (`import`, `export`, `idle` within 20 W), `measuredAt` (house time), `stale` (no readings, older than 2 min, or the meter off the broker). What the meter did not send is left out; before the first readings only `{"stale": true}` |
 
 # Database
 
@@ -75,3 +81,6 @@ services needs `GRANT USAGE, CREATE ON SCHEMA public` before the first start, or
 
 - `V1` is an empty baseline - the tables come with the tasks that store something. Its first run
   creates the history table of Flyway, which proves the grant.
+- `V2` (HAS-327) `grid_reading`: the grid meter once a minute, a row only when a value changed - the power
+  per phase and in total (W, signed), the energies taken and returned (kWh), the voltage per phase. Kept
+  until the retention of HAS-331.

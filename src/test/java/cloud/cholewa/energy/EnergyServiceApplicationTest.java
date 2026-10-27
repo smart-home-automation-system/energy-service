@@ -1,6 +1,7 @@
 package cloud.cholewa.energy;
 
 import cloud.cholewa.commons.database.DatabaseProperties;
+import cloud.cholewa.energy.meter.MeterProperties;
 import cloud.cholewa.shelly.http.ShellyGen1Client;
 import cloud.cholewa.shelly.http.ShellyRpcClient;
 import cloud.cholewa.shelly.codec.ShellyMqttDecoder;
@@ -10,6 +11,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
 import org.springframework.scheduling.annotation.ScheduledAnnotationBeanPostProcessor;
 import org.springframework.test.context.ActiveProfiles;
+
+import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -21,6 +24,8 @@ class EnergyServiceApplicationTest {
     private DatabaseProperties databaseProperties;
     @Autowired
     private ApplicationContext applicationContext;
+    @Autowired
+    private MeterProperties meterProperties;
 
     @Test
     void contextLoads() {
@@ -46,13 +51,40 @@ class EnergyServiceApplicationTest {
             .isEqualTo(10);
     }
 
-    //the password of the database has no default: the start is refused without it (cholewa.required-properties)
+    //what has no default in a document a pod runs with - the passwords of the database and the broker, the id and
+    //the address of the grid meter (private, from the manifest): the start is refused without any of them
+    //(cholewa.required-properties)
     @Test
-    void should_require_the_password_of_the_database() {
-        assertThat(applicationContext.getEnvironment().getProperty("cholewa.required-properties[0].property"))
-            .isEqualTo("database.password");
-        assertThat(applicationContext.getEnvironment().getProperty("cholewa.required-properties[0].variable"))
-            .isEqualTo("database-password");
+    void should_require_what_has_no_default() {
+        assertThat(required(0)).containsExactly("database.password", "database-password");
+        assertThat(required(1)).containsExactly("spring.rabbitmq.password", "rabbitmq-password");
+        assertThat(required(2)).containsExactly("energy.meter.device-id", "meter-device-id");
+        assertThat(required(3)).containsExactly("energy.meter.address", "meter-address");
+        assertThat(applicationContext.getEnvironment().getProperty("cholewa.required-properties[4].property")).isNull();
+    }
+
+    //the listener returns a Mono: with the default ack mode the container acks before the message is handled
+    @Test
+    void should_acknowledge_the_device_events_by_hand_three_at_a_time() {
+        assertThat(applicationContext.getEnvironment().getProperty("spring.rabbitmq.listener.simple.acknowledge-mode"))
+            .isEqualTo("manual");
+        assertThat(applicationContext.getEnvironment().getProperty("spring.rabbitmq.listener.simple.prefetch",
+            Integer.class)).isEqualTo(3);
+        assertThat(applicationContext.getEnvironment().getProperty("spring.rabbitmq.virtual-host")).isEqualTo("/device");
+        assertThat(applicationContext.getEnvironment().getProperty("spring.rabbitmq.username")).isEqualTo("device");
+    }
+
+    //a reading older than two minutes is stale: the meter publishes about every five seconds
+    @Test
+    void should_serve_a_reading_older_than_two_minutes_as_stale() {
+        assertThat(meterProperties.staleAfter()).isEqualTo(Duration.ofMinutes(2));
+    }
+
+    private String[] required(final int index) {
+        return new String[] {
+            applicationContext.getEnvironment().getProperty("cholewa.required-properties[" + index + "].property"),
+            applicationContext.getEnvironment().getProperty("cholewa.required-properties[" + index + "].variable")
+        };
     }
 
     //the grid meter (Shelly Pro 3EM, HAS-327) is read through the clients and the MQTT decoder of shelly-client
