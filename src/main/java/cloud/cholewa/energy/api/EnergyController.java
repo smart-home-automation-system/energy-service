@@ -1,6 +1,8 @@
 package cloud.cholewa.energy.api;
 
+import cloud.cholewa.energy.api.model.GridReply;
 import cloud.cholewa.energy.api.model.SourceStatusReply;
+import cloud.cholewa.energy.meter.GridService;
 import cloud.cholewa.energy.status.EnergyStatusService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -16,10 +18,17 @@ import java.util.List;
 public class EnergyController {
 
     private final EnergyStatusService energyStatusService;
+    private final GridService gridService;
 
     //every source of energy with whether it answers - the contract of the availability card of the dashboard
     @GetMapping("status")
     Mono<List<SourceStatusReply>> status() {
         return energyStatusService.status();
+    }
+
+    //the grid meter now (HAS-327)
+    @GetMapping("grid")
+    Mono<GridReply> grid() {
+        return gridService.grid();
     }
 }
