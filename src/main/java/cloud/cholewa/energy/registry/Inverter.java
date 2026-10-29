@@ -1,6 +1,5 @@
 package cloud.cholewa.energy.registry;
 
-import cloud.cholewa.home.model.InverterBinding;
 import cloud.cholewa.home.model.InverterBrand;
 import cloud.cholewa.home.model.RoomName;
 import cloud.cholewa.home.model.SmartDevice;
@@ -24,12 +23,10 @@ public record Inverter(
     //the inverter of a device of the registry, or nothing for a device without an id or an inverter binding - the
     //registry never stores one, so it is a registry the service does not understand
     static Optional<Inverter> of(final SmartDevice device) {
-        final InverterBinding binding = device.getInverter();
-        if (device.getId() == null || binding == null || binding.getBrand() == null) {
-            return Optional.empty();
-        }
-        return Optional.of(new Inverter(device.getId(), device.getName(), device.getRoom(), binding.getBrand(),
-            binding.getSerialNumber(), binding.getAddress(), binding.getRegistrationNumber(),
-            binding.getLoggerSerial()));
+        return Optional.ofNullable(device.getInverter())
+            .filter(binding -> binding.getBrand() != null)
+            .flatMap(binding -> Optional.ofNullable(device.getId()).map(id -> new Inverter(id, device.getName(),
+                device.getRoom(), binding.getBrand(), binding.getSerialNumber(), binding.getAddress(),
+                binding.getRegistrationNumber(), binding.getLoggerSerial())));
     }
 }

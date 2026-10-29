@@ -2,8 +2,9 @@ package cloud.cholewa.energy.solax;
 
 //One answer of the dongle of the SOLAX as the service understands it (HAS-328) - only the values of the map of
 //type 33 (Type33); a value the map does not establish is null and never served. Units: V, A, W (signed), Hz, °C, %,
-//kWh. inverterSerial - the serial number of the inverter the dongle answers for (Information[2]). gridPower - what the
-//meter of the inverter measures at the grid, W, positive while the house takes from the grid (as GET /grid answers)
+//kWh. inverterSerial is the serial number of the inverter the dongle answers for, Information[2] of the answer.
+//gridPower is what the meter of the inverter measures at the grid, in W, positive while the house takes from the grid
+//- the same sign the grid endpoint uses
 public record SolaxReading(
     String inverterSerial,
     int runModeCode,

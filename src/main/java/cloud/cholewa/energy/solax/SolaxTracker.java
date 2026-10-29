@@ -31,7 +31,7 @@ public class SolaxTracker {
         final Integer modeBefore = before.reading() == null ? null : before.reading().runModeCode();
         if (!Objects.equals(modeBefore, reading.runModeCode())) {
             log.info("The run mode of the SOLAX is {} (code {})",
-                reading.runMode() == null ? "not known" : reading.runMode().wireName(), reading.runModeCode());
+                RunMode.of(reading.runModeCode()).map(RunMode::wireName).orElse("not known"), reading.runModeCode());
         }
     }
 

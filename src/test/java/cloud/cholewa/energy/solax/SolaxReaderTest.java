@@ -207,7 +207,7 @@ class SolaxReaderTest {
             .expectNoEvent(SolaxReader.LIMIT.minusSeconds(1))
             .thenAwait(Duration.ofSeconds(1))
             .verifyComplete();
-        assertThat(SolaxReader.LIMIT).isLessThan(Duration.ofSeconds(10));
+        assertThat(SolaxReader.LIMIT.compareTo(Duration.ofSeconds(10))).isNegative();
     }
 
     //a reactive @Scheduled method is called once and subscribed to at every run: the registry is asked at every run
