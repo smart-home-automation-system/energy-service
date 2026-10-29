@@ -1,11 +1,19 @@
 package cloud.cholewa.energy.api;
 
+import cloud.cholewa.energy.api.model.BatteryDirection;
+import cloud.cholewa.energy.api.model.BatteryReply;
 import cloud.cholewa.energy.api.model.GridDirection;
+import cloud.cholewa.energy.api.model.InverterReply;
 import cloud.cholewa.energy.api.model.GridReply;
 import cloud.cholewa.energy.api.model.PhaseReply;
+import cloud.cholewa.energy.api.model.PvReply;
 import cloud.cholewa.energy.api.model.SourceStatusReply;
 import cloud.cholewa.energy.config.ExceptionHandlerConfig;
+import cloud.cholewa.energy.error.EnergyException;
+import cloud.cholewa.energy.inverter.BatteryService;
+import cloud.cholewa.energy.inverter.InverterService;
 import cloud.cholewa.energy.meter.GridService;
+import cloud.cholewa.energy.solax.RunMode;
 import cloud.cholewa.energy.status.EnergyStatusService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,6 +43,10 @@ class EnergyControllerTest {
     private EnergyStatusService energyStatusService;
     @MockitoBean
     private GridService gridService;
+    @MockitoBean
+    private InverterService inverterService;
+    @MockitoBean
+    private BatteryService batteryService;
 
     //a source not known is reachable null, written out - never false; its last reading is left out
     @Test
@@ -114,5 +126,92 @@ class EnergyControllerTest {
             .expectBody().json("""
                 {"phases": {"a": {"voltage": 236.8, "activePower": -171.4}},
                  "measuredAt": "2026-10-27T11:00:05", "stale": false}""", JsonCompareMode.STRICT);
+    }
+
+    //HAS-328: the SOLAX with its reading, the SOFAR with its registry entry until its task
+    @Test
+    void should_answer_the_inverters() {
+        final Map<String, PhaseReply> phases = new LinkedHashMap<>();
+        phases.put("a", new PhaseReply(234.0, 2.1, 479.0, null, null, null));
+        phases.put("b", new PhaseReply(232.7, 3.6, 817.0, null, null, null));
+        phases.put("c", new PhaseReply(234.5, 2.1, 460.0, null, null, null));
+        final Map<String, PvReply> pv = new LinkedHashMap<>();
+        pv.put("pv1", new PvReply(642.1, 1.4, 897.0));
+        pv.put("pv2", new PvReply(272.8, 1.4, 385.0));
+        when(inverterService.inverters()).thenReturn(Mono.just(List.of(
+            new InverterReply("solax", 134L, "SOLAX inverter", "garage", RunMode.PERMANENT_FAULT, 1755.0, phases,
+                1282.0, pv, 1804.0, 50.01, 0.95, 48.0, 38.6, 4510.6, LocalDateTime.of(2026, 10, 27, 20, 49), false),
+            new InverterReply("sofar", 135L, "SOFAR inverter", "boiler", null, null, null, null, null, null, null,
+                null, null, null, null, null, true))));
+
+        webTestClient.get().uri("/inverters")
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody().json("""
+                [
+                  {"id": "solax", "registryId": 134, "name": "SOLAX inverter", "room": "garage",
+                   "runMode": "permanent fault", "acPower": 1755.0,
+                   "phases": {"a": {"voltage": 234.0, "current": 2.1, "activePower": 479.0},
+                              "b": {"voltage": 232.7, "current": 3.6, "activePower": 817.0},
+                              "c": {"voltage": 234.5, "current": 2.1, "activePower": 460.0}},
+                   "pvPower": 1282.0,
+                   "pv": {"pv1": {"voltage": 642.1, "current": 1.4, "power": 897.0},
+                          "pv2": {"voltage": 272.8, "current": 1.4, "power": 385.0}},
+                   "gridPower": 1804.0,
+                   "frequency": 50.01, "powerFactor": 0.95, "temperature": 48.0, "dailyYield": 38.6,
+                   "totalYield": 4510.6, "measuredAt": "2026-10-27T20:49:00", "stale": false},
+                  {"id": "sofar", "registryId": 135, "name": "SOFAR inverter", "room": "boiler", "stale": true}
+                ]""", JsonCompareMode.STRICT);
+    }
+
+    @Test
+    void should_refuse_an_inverter_not_registered_with_its_code() {
+        when(inverterService.inverter("fronius")).thenReturn(Mono.error(EnergyException.inverterNotFound("fronius")));
+
+        webTestClient.get().uri("/inverters/fronius")
+            .exchange()
+            .expectStatus().isNotFound()
+            .expectBody()
+            .jsonPath("$.errors[0].code").isEqualTo("NOT_FOUND_INVERTER")
+            .jsonPath("$.errors[0].message").isEqualTo("Inverter not found")
+            .jsonPath("$.errors[0].details").isEqualTo("No inverter fronius is registered");
+    }
+
+    @Test
+    void should_answer_503_while_the_registry_is_not_known() {
+        when(inverterService.inverters()).thenReturn(Mono.error(EnergyException.registryUnavailable()));
+
+        webTestClient.get().uri("/inverters")
+            .exchange()
+            .expectStatus().isEqualTo(503)
+            .expectBody()
+            .jsonPath("$.errors[0].code").isEqualTo("REGISTRY_UNAVAILABLE");
+    }
+
+    @Test
+    void should_answer_the_battery() {
+        when(batteryService.battery()).thenReturn(Mono.just(new BatteryReply(64.0, 99.0, -1980.0,
+            BatteryDirection.DISCHARGING, 52.3, -38.6, 20.0, 132, 16.96, 26.6, 10.2,
+            LocalDateTime.of(2026, 10, 27, 20, 49), false)));
+
+        webTestClient.get().uri("/battery")
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody().json("""
+                {"soc": 64.0, "health": 99.0, "power": -1980.0, "direction": "discharging", "voltage": 52.3,
+                 "current": -38.6, "temperature": 20.0, "cycles": 132, "remainingKwh": 16.96, "chargedToday": 26.6,
+                 "dischargedToday": 10.2, "measuredAt": "2026-10-27T20:49:00", "stale": false}""", JsonCompareMode.STRICT);
+    }
+
+    @Test
+    void should_answer_only_stale_for_a_battery_not_read() {
+        when(batteryService.battery()).thenReturn(Mono.just(new BatteryReply(null, null, null, null, null, null, null,
+            null, null, null, null, null, true)));
+
+        webTestClient.get().uri("/battery")
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody().json("""
+                {"stale": true}""", JsonCompareMode.STRICT);
     }
 }

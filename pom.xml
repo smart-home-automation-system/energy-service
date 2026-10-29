@@ -42,10 +42,11 @@
 		<sonar.exclusions>**/model/**/*</sonar.exclusions>
 
 		<logbook.version>4.2.0</logbook.version>
+		<mockwebserver3.version>5.5.1</mockwebserver3.version>
 
 		<!--  internal dependencies versions-->
 		<cholewa-commons.version>1.12.0</cholewa-commons.version>
-		<smart-home-sdk.version>1.14.0</smart-home-sdk.version>
+		<smart-home-sdk.version>1.15.0</smart-home-sdk.version>
 		<shelly-client.version>2.3.0</shelly-client.version>
 
 		<!--  plugins versions-->
@@ -180,6 +181,12 @@
 		<dependency>
 			<groupId>org.testcontainers</groupId>
 			<artifactId>testcontainers-postgresql</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>com.squareup.okhttp3</groupId>
+			<artifactId>mockwebserver3</artifactId>
+			<version>${mockwebserver3.version}</version>
 			<scope>test</scope>
 		</dependency>
 	</dependencies>

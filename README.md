@@ -33,14 +33,21 @@ service will read them, keep the history and the balance of the grid (net-meteri
 alarm on a lost source, an overloaded phase or a lost grid, and charge the battery before a
 planned outage of Tauron.
 
-**Today it reads the grid meter** (HAS-327) on top of the scaffold of HAS-325: the Shelly Pro 3EM at
-the grid entry over MQTT and its RPC, a snapshot a minute in `grid_reading`, `GET /home/energy/grid`.
-The other sources are not known yet. What comes next:
+**Today it reads the grid meter and the SOLAX** on top of the scaffold of HAS-325:
+
+- the Shelly Pro 3EM at the grid entry over MQTT and its RPC, a snapshot a minute in `grid_reading`,
+  `GET /home/energy/grid` (HAS-327);
+- the SOLAX inverter and its battery over the local API of its dongle every 15 s - the inverter from the
+  device registry (kind `inverter`, HAS-326), a snapshot a minute in `inverter_reading` and
+  `battery_reading`, `GET /home/energy/inverters` and `/battery` (HAS-328); the layout of the answer (type 33, in no
+  public library) is established on answers compared with SolaxCloud by night and by day.
+
+The SOFAR and the SolaX cloud are not known yet. What comes next:
 
 | Task | What |
 |---|---|
-| HAS-326 | the kind `inverter` in the device registry (`smart-home-sdk`, `database-service`) |
-| HAS-328 | the SOLAX inverter and its battery over the local API of its dongle |
+| HAS-329 | the SolaX Developer Platform |
+| HAS-330 | the SOFAR inverter |
 | HAS-331 | the balance of the grid and its history |
 
 # Run locally
@@ -63,6 +70,10 @@ The other sources are not known yet. What comes next:
   service starts all the same and reads the meter over its RPC.
 - **The grid meter**: `meter-device-id` (its MQTT id, `shellypro3em-<mac>`) and `meter-address` (where its
   RPC answers) - both mandatory, from the manifest; `energy.meter.stale-after` (PT2M).
+- **The inverters**: read from the device registry of `database-service` (`internal.service.database`,
+  `http://localhost:6005` under `local`). The SOLAX is asked at the address and with the registration number
+  of its dongle from there; `energy.solax.interval` (PT15S, 10 - 60 s), `energy.solax.stale-after` (PT1M),
+  `energy.solax.battery-capacity` (26.5 kWh, the usable capacity of the battery).
 
 # API
 
@@ -70,8 +81,11 @@ Under the base path `/home/energy`, routed by the gateway by path, every method.
 
 | Method | Path | Answer |
 |---|---|---|
-| `GET` | `/home/energy/status` | every source of energy in the order of the dashboard - `meter`, `solax`, `sofar`, `solaxCloud` - with `reachable`: `true`, `false`, or `null` while the service knows nothing of it (the inverters and the cloud until their tasks), and `lastReadingAt` (house time) once a reading came. The meter is `false` after its last will on the broker |
+| `GET` | `/home/energy/status` | every source of energy in the order of the dashboard - `meter`, `solax`, `sofar`, `solaxCloud` - with `reachable`: `true`, `false`, or `null` while the service knows nothing of it (the SOFAR and the cloud until their tasks; the SOLAX is the last read of its dongle), and `lastReadingAt` (house time) once a reading came. The meter is `false` after its last will on the broker |
 | `GET` | `/home/energy/grid` | the grid meter now: `phases` `a` / `b` / `c` (`voltage` V, `current` A, `activePower` W, `apparentPower` VA, `powerFactor`, `frequency` Hz), `totalActivePower` (W, positive while the house takes from the grid, negative while it returns), `importEnergy` / `exportEnergy` (kWh since the meter was set up), `direction` (`import`, `export`, `idle` within 20 W), `measuredAt` (house time), `stale` (no readings, older than 2 min, or the meter off the broker). What the meter did not send is left out; before the first readings only `{"stale": true}` |
+| `GET` | `/home/energy/inverters` | every inverter of the device registry: `id` (`solax`, `sofar`), `registryId`, `name`, `room`, and from its last reading `runMode` (`waiting`, `checking`, `normal`, `fault`, `permanent fault`, `updating`, `eps check`, `eps`, `self test`, `idle`, `standby`), `acPower` (W), `phases` `a` / `b` / `c` (`voltage`, `current`, `activePower`), `pvPower` (W of the panels together), `pv` `pv1` / `pv2` (`voltage`, `current`, `power` of each string; 0 at night), `gridPower` (W the meter of the SOLAX measures at the grid, positive while the house takes from it - the grid itself is `/grid`), `frequency`, `powerFactor`, `temperature` (°C), `dailyYield` / `totalYield` (kWh), `measuredAt`, `stale` (no reading, older than 1 min, or the last read failed). The SOFAR answers its registry entry and `stale` until its task. `503 REGISTRY_UNAVAILABLE` until the registry was read once |
+| `GET` | `/home/energy/inverters/{id}` | one inverter by its brand, as above; `404 NOT_FOUND_INVERTER` for another id or a brand not registered |
+| `GET` | `/home/energy/battery` | the battery of the SOLAX now: `soc` (%), `health` (SOH %), `power` (W, positive while charging, negative while discharging), `direction` (`charging`, `discharging`, `idle` within 20 W), `voltage`, `current`, `temperature`, `cycles`, `remainingKwh` (the SOC of the usable capacity), `chargedToday` / `dischargedToday` (kWh), `measuredAt`, `stale`. Before the first reading only `{"stale": true}` |
 
 # Database
 
@@ -84,3 +98,5 @@ services needs `GRANT USAGE, CREATE ON SCHEMA public` before the first start, or
 - `V2` (HAS-327) `grid_reading`: the grid meter once a minute, a row only when a value changed - the power
   per phase and in total (W, signed), the energies taken and returned (kWh), the voltage per phase. Kept
   until the retention of HAS-331.
+- `V3` (HAS-328) `inverter_reading` (an inverter by its registry id: the PV power together and per string, the AC power, the run mode in words, the temperature, the daily yield) and `battery_reading` (SOC,
+  power, voltage, current, temperature): once a minute, a row only when a value changed.

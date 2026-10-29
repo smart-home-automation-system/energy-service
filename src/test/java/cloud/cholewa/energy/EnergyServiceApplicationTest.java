@@ -2,6 +2,7 @@ package cloud.cholewa.energy;
 
 import cloud.cholewa.commons.database.DatabaseProperties;
 import cloud.cholewa.energy.meter.MeterProperties;
+import cloud.cholewa.energy.solax.SolaxProperties;
 import cloud.cholewa.shelly.http.ShellyGen1Client;
 import cloud.cholewa.shelly.http.ShellyRpcClient;
 import cloud.cholewa.shelly.codec.ShellyMqttDecoder;
@@ -26,6 +27,8 @@ class EnergyServiceApplicationTest {
     private ApplicationContext applicationContext;
     @Autowired
     private MeterProperties meterProperties;
+    @Autowired
+    private SolaxProperties solaxProperties;
 
     @Test
     void contextLoads() {
@@ -78,6 +81,15 @@ class EnergyServiceApplicationTest {
     @Test
     void should_serve_a_reading_older_than_two_minutes_as_stale() {
         assertThat(meterProperties.staleAfter()).isEqualTo(Duration.ofMinutes(2));
+    }
+
+    //HAS-328: the SOLAX read every 15 s, stale after a minute (four reads missed); the usable capacity of the
+    //battery of the plant as SolaxCloud gives it
+    @Test
+    void should_read_the_solax_every_fifteen_seconds() {
+        assertThat(solaxProperties.interval()).isEqualTo(Duration.ofSeconds(15));
+        assertThat(solaxProperties.staleAfter()).isEqualTo(Duration.ofMinutes(1));
+        assertThat(solaxProperties.batteryCapacity()).isEqualTo(26.5);
     }
 
     private String[] required(final int index) {
