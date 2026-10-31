@@ -33,14 +33,38 @@ service will read them, keep the history and the balance of the grid (net-meteri
 alarm on a lost source, an overloaded phase or a lost grid, and charge the battery before a
 planned outage of Tauron.
 
-**Today it reads the grid meter and the SOLAX** on top of the scaffold of HAS-325:
+**Today it reads the grid meter and the SOLAX and watches the grid** on top of the scaffold of HAS-325:
 
 - the Shelly Pro 3EM at the grid entry over MQTT and its RPC, a snapshot a minute in `grid_reading`,
   `GET /home/energy/grid` (HAS-327);
 - the SOLAX inverter and its battery over the local API of its dongle every 15 s - the inverter from the
   device registry (kind `inverter`, HAS-326), a snapshot a minute in `inverter_reading` and
   `battery_reading`, `GET /home/energy/inverters` and `/battery` (HAS-328); the layout of the answer (type 33, in no
-  public library) is established on answers compared with SolaxCloud by night and by day.
+  public library) is established on answers compared with SolaxCloud by night and by day;
+- **the outages of the grid** as the SOLAX sees them (HAS-334): the loss, the hourly reminders, a low battery and
+  the return told on Discord - the loss, the low battery and the return also by SMS to the administrators of the
+  household - stored in `grid_outage`, `GET /home/energy/outages` and the grid in `/status`.
+
+**The outages of the grid** - only the inverter knows the grid: the Pro 3EM goes dark with an empty battery, and the
+cluster runs in the house.
+
+- **Lost** after two reads of the SOLAX in a row (15 s apart) with the run mode EPS check / EPS, or no voltage
+  (below 100 V) on any phase at the grid connection point; **back** after two reads with all three phases at 100 V or
+  more outside EPS - in any run mode: with the battery empty the SOLAX answers a run mode outside its list (21).
+  One or two phases down decide nothing. The outage starts and ends at the first of the two reads.
+- An alert at the loss with the time, the state of charge and the time left at the power the battery gives
+  (down to the 10 % the SOLAX stops the EPS at); a reminder every hour (`energy.outage.reminder-every`); one alert
+  more when the battery falls below `energy.outage.low-soc` (20 %); an info at the return with the length. The
+  loss, the low battery and the return are marked for an SMS (`publishAlertSms` / `publishInfoSms` of
+  `cholewa-commons` 1.13.0), the reminder is Discord only. The alert does not wait for the database (a managed
+  one, outside the house): a row it does not take is stored with a later pass. One alert of a low battery an outage,
+  none when it was low at the loss already.
+- **A restart during an outage keeps its row**: the open outage is read from the database before anything is
+  decided, and the reads of the SOLAX close it when the grid is back.
+- **The limit**: with the battery empty, or the inverter off, the service is down with the house - an outage is
+  told only while the inverter runs. After a start the grid is not known (`null`) until two reads agree, and it is
+  not known while the SOLAX is stale (a stored outage stays `lost`); a restart while the database cannot be read
+  decides nothing until it can.
 
 The SOFAR and the SolaX cloud are not known yet. What comes next:
 
@@ -49,6 +73,7 @@ The SOFAR and the SolaX cloud are not known yet. What comes next:
 | HAS-329 | the SolaX Developer Platform |
 | HAS-330 | the SOFAR inverter |
 | HAS-331 | the balance of the grid and its history |
+| HAS-332 | the availability of the sources and the phase overload warning |
 
 # Run locally
 
@@ -74,6 +99,10 @@ The SOFAR and the SolaX cloud are not known yet. What comes next:
   `http://localhost:6005` under `local`). The SOLAX is asked at the address and with the registration number
   of its dongle from there; `energy.solax.interval` (PT15S, 10 - 60 s), `energy.solax.stale-after` (PT1M),
   `energy.solax.battery-capacity` (26.5 kWh, the usable capacity of the battery).
+- **The notifications** (HAS-334): a second connection to the same broker, `/notification` as the user
+  `notification` (`notification-rabbitmq-password`, mandatory), the exchange `notification` with `env` `prod`
+  (`dev` under `local`). `energy.outage.low-soc` (20 %, 11 - 99) and `energy.outage.reminder-every` (PT1H,
+  10 min - 24 h).
 
 # API
 
@@ -81,11 +110,12 @@ Under the base path `/home/energy`, routed by the gateway by path, every method.
 
 | Method | Path | Answer |
 |---|---|---|
-| `GET` | `/home/energy/status` | every source of energy in the order of the dashboard - `meter`, `solax`, `sofar`, `solaxCloud` - with `reachable`: `true`, `false`, or `null` while the service knows nothing of it (the SOFAR and the cloud until their tasks; the SOLAX is the last read of its dongle), and `lastReadingAt` (house time) once a reading came. The meter is `false` after its last will on the broker |
+| `GET` | `/home/energy/status` | an object (since HAS-334; a bare list of the sources before): `sources` - every source of energy in the order of the dashboard - `meter`, `solax`, `sofar`, `solaxCloud` - with `reachable`: `true`, `false`, or `null` while the service knows nothing of it (the SOFAR and the cloud until their tasks; the SOLAX is the last read of its dongle), and `lastReadingAt` (house time) once a reading came; the meter is `false` after its last will on the broker. `grid` - `state` `present` or `lost` as the SOLAX sees it, `null` while not known (after a start, before two reads agree), and `since` (house time) once known |
 | `GET` | `/home/energy/grid` | the grid meter now: `phases` `a` / `b` / `c` (`voltage` V, `current` A, `activePower` W, `apparentPower` VA, `powerFactor`, `frequency` Hz), `totalActivePower` (W, positive while the house takes from the grid, negative while it returns), `importEnergy` / `exportEnergy` (kWh since the meter was set up), `direction` (`import`, `export`, `idle` within 20 W), `measuredAt` (house time), `stale` (no readings, older than 2 min, or the meter off the broker). What the meter did not send is left out; before the first readings only `{"stale": true}` |
 | `GET` | `/home/energy/inverters` | every inverter of the device registry: `id` (`solax`, `sofar`), `registryId`, `name`, `room`, and from its last reading `runMode` (`waiting`, `checking`, `normal`, `fault`, `permanent fault`, `updating`, `eps check`, `eps`, `self test`, `idle`, `standby`), `acPower` (W), `phases` `a` / `b` / `c` (`voltage`, `current`, `activePower`), `pvPower` (W of the panels together), `pv` `pv1` / `pv2` (`voltage`, `current`, `power` of each string; 0 at night), `gridPower` (W the meter of the SOLAX measures at the grid, positive while the house takes from it - the grid itself is `/grid`), `frequency`, `powerFactor`, `temperature` (°C), `dailyYield` / `totalYield` (kWh), `measuredAt`, `stale` (no reading, older than 1 min, or the last read failed). The SOFAR answers its registry entry and `stale` until its task. `503 REGISTRY_UNAVAILABLE` until the registry was read once |
 | `GET` | `/home/energy/inverters/{id}` | one inverter by its brand, as above; `404 NOT_FOUND_INVERTER` for another id or a brand not registered |
 | `GET` | `/home/energy/battery` | the battery of the SOLAX now: `soc` (%), `health` (SOH %), `power` (W, positive while charging, negative while discharging), `direction` (`charging`, `discharging`, `idle` within 20 W), `voltage`, `current`, `temperature`, `cycles`, `remainingKwh` (the SOC of the usable capacity), `chargedToday` / `dischargedToday` (kWh), `measuredAt`, `stale`. Before the first reading only `{"stale": true}` |
+| `GET` | `/home/energy/outages?from=&to=` | the outages of the grid that started in `[from, to)` (house times, ISO `2026-10-01T00:00:00`), the oldest first: `startedAt`, `endedAt` (left out while it lasts), `socAtStart`, `socAtEnd`, `lowestSoc` (%; a value not known left out). `400 INVALID_RANGE` when `from` is not before `to` or they are more than 366 days apart, `400` without either |
 
 # Database
 
@@ -100,3 +130,6 @@ services needs `GRANT USAGE, CREATE ON SCHEMA public` before the first start, or
   until the retention of HAS-331.
 - `V3` (HAS-328) `inverter_reading` (an inverter by its registry id: the PV power together and per string, the AC power, the run mode in words, the temperature, the daily yield) and `battery_reading` (SOC,
   power, voltage, current, temperature): once a minute, a row only when a value changed.
+- `V4` (HAS-334) `grid_outage`: one row an outage of the grid - its start and end (`ended_at` NULL while it
+  lasts, at most one such row: a partial unique index), the state of charge at the start, at the end and the lowest,
+  the last notification and the alert of a low battery (so that a restart neither repeats nor forgets them).

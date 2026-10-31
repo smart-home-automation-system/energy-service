@@ -22,6 +22,10 @@ public class EnergyException extends RuntimeException {
             "No inverter " + id + " is registered");
     }
 
+    public static EnergyException invalidRange(final String message) {
+        return new EnergyException(HttpStatus.BAD_REQUEST, EnergyError.INVALID_RANGE, message);
+    }
+
     public static EnergyException registryUnavailable() {
         return new EnergyException(HttpStatus.SERVICE_UNAVAILABLE, EnergyError.REGISTRY_UNAVAILABLE,
             "The inverters of the device registry are not known yet");

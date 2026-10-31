@@ -8,8 +8,8 @@ Part of the smart-home-automation-system organization — org-wide conventions, 
 repository map and working rules come from the workspace-level context
 (`organization-repository/claude/organization.md`). The user writes the code in this
 repository themselves; Claude's default role here is analysis, code review and security
-review - the owner had Claude implement the scaffold (HAS-325), the grid meter (HAS-327) and the
-SOLAX (HAS-328), and reviews them in IntelliJ.
+review - the owner had Claude implement the scaffold (HAS-325), the grid meter (HAS-327), the
+SOLAX (HAS-328) and the outages of the grid (HAS-334), and reviews them in IntelliJ.
 
 ## Role in the system
 
@@ -20,9 +20,13 @@ SOLAX (HAS-328), and reviews them in IntelliJ.
 - Calls: the Shelly Pro 3EM over its RPC (`EM.GetStatus`, `EMData.GetStatus`, HAS-327); the dongle of the
   SOLAX over its local API and `database-service` for the inverters of the device registry
   (`GET /home/device/registry?kind=inverter&enabled=true`, HAS-328). Planned: the SolaX Developer Platform
-  (HAS-329), the SOFAR (HAS-330), `notification-service` for the alarms.
-- Uses libraries: `cholewa-commons` 1.12.0 (the pooled `ConnectionFactory`, the required
-  properties, the scheduler pool and `ScheduledPass`, the error contract), `smart-home-sdk` 1.15.0 (the kind
+  (HAS-329), the SOFAR (HAS-330).
+- Publishes: the alerts, reminders and infos of the outages of the grid to the exchange `notification` of
+  `/notification` (user `notification`, `notification-rabbitmq-password`; HAS-334) - the loss, a low battery and
+  the return marked for an SMS.
+- Uses libraries: `cholewa-commons` 1.13.0 (the pooled `ConnectionFactory`, the required
+  properties, the scheduler pool and `ScheduledPass`, the error contract, `NotificationConnection` and the
+  `...Sms` methods of `NotificationPublisher` - HAS-334), `smart-home-sdk` 1.15.0 (the kind
   `inverter` and `InverterBinding`, HAS-326),
   `shelly-client` 2.3.0 **with its beans on** (`ShellyRpcClient`, `ShellyGen1Client`,
   `ShellyMqttDecoder`; pinned by `EnergyServiceApplicationTest`) - 2.3.0 brought `EmStatus`, `EmDataStatus`
@@ -52,7 +56,8 @@ SOLAX (HAS-328), and reviews them in IntelliJ.
   placeholders (a wrong host fails at the first query and at Flyway).
 - **`V1` is an empty baseline** (only a comment): Flyway applies it and writes its history table,
   so the start has no `No migrations found` WARN and proves the grant.
-- **`GET /status` answers a source not known with `reachable: null`** - the inverters and the cloud
+- **`GET /status` is an object since HAS-334** (`sources` and `grid`; a bare list of the sources before - Bruno
+  was its only reader). **It answers a source not known with `reachable: null`** - the inverters and the cloud
   until their tasks, the meter until its first message - written out as `null`, never left out or
   `false`; `lastReadingAt` is left out while there is none. `EnergySource` holds the order and the
   wire names (`solaxCloud`), the contract of the dashboard.
@@ -60,11 +65,13 @@ SOLAX (HAS-328), and reviews them in IntelliJ.
   `@Scheduled` method is wrapped in `ScheduledPass.bounded`, its limit below its delay and pinned by a
   test that hangs the pass (the reconciliation 1 min, the snapshot 50 s); the scheduler has the pool of
   10 of the library.
+  The outage watch: every 15 s, bounded at 14 s.
 - **The broker**: one connection, the auto-configured one, to `/device` (user `device`, `rabbitmq-password`),
   the listener with manual ack, prefetch 3 and observation (`EnergyServiceApplicationTest`). The notifications
-  come with the alarms as a second connection that is **not a bean** (`NotificationConnection` of
-  `cholewa-commons`): a `ConnectionFactory` bean would switch off the auto-configured one with its listener
-  settings.
+  go over a second connection that is **not a bean** (`NotificationConnection` of `cholewa-commons`, built by
+  `NotificationRabbitConfig` - since HAS-334): a `ConnectionFactory` bean would switch off the auto-configured one
+  with its listener settings. `NotificationRabbitConfig` / `NotificationConnectionProperties` are the sixth copy
+  (heating, blinds, weather, light, amx) - kept as copies by the owner's choice; a change goes into every copy.
 - **The grid meter** (HAS-327, package `meter`):
   - Known by `energy.meter.device-id` and `energy.meter.address` from the manifest, **not by the registry**:
     the Pro 3EM is there already as the BTHome gateway 79 of the garage gate sensors, and one device is one
@@ -118,6 +125,41 @@ SOLAX (HAS-328), and reviews them in IntelliJ.
     `energy.solax.battery-capacity`, 26.5 kWh, the usable capacity SolaxCloud gives; `direction` by
     `BatteryDirection.DEAD_BAND_WATTS`, 20 W), `stale` after `energy.solax.stale-after` (PT1M) or a failed read;
     `GET /status` - `solax.reachable` is the last read. A value the map does not establish is left out.
+- **The outages of the grid** (HAS-334, package `outage`) - what is easy to break:
+  - **Only the SOLAX knows the grid** (owner, 2026-10-23): the Pro 3EM goes dark with an empty battery or the
+    inverter off, the cluster runs in the house; the cloud read has no `deviceStatus`. `GridSignal` per reading:
+    **LOST** - run mode 6 / 7, or all three voltages at the grid connection point (Data[167-169]) below 100 V;
+    **PRESENT** - not in EPS and all three at 100 V or more, **in any run mode** (the task said "run mode 2": the
+    SOLAX answered **run mode 21**, outside its list, with the battery empty while the house took from the grid -
+    sample 2026-10-29, so the return would never be seen then); **NOT_KNOWN** - one or two phases down or a voltage
+    missing, the state holds.
+  - `OutageRules` decides without I/O (`OutageRulesTest`): a reading counts once (its house time), **two in a
+    row decide**, the outage starts / ends at the first of them; the lowest SOC kept; below
+    `energy.outage.low-soc` (20) one alert more, once an outage; a reminder every `energy.outage.reminder-every`
+    (PT1H) from the last notification. The words are `OutageMessages` - English, one GSM SMS with "ERROR: " in
+    front (pinned); the time left is the energy above the 10 % EPS floor at the power the battery gives now, left
+    out while it does not discharge.
+  - `GridOutageWatch` (every 15 s, bounded at 14 s) runs them: **nothing is decided before the open outage is read
+    from the database** (a failed read tried again next pass) - a restart during an outage keeps its row and the
+    SOLAX closes it; a restart while the database cannot be read decides nothing until it can. Then **memory first**
+    (the /code-review of HAS-334: the database is managed, outside the house, and must not hold an alert back): the
+    decision is held at once, the notifications sent, then the row stored - one the database does not take stays in
+    `GridWatch.unsaved` and is tried with every pass, the newest row of an outage replacing an older one (it holds
+    everything), the open outage taking its id once stored. Each notification is cut off after 6 s (two fit in the
+    bound) and swallowed with its text at ERROR - stored as reminded all the same, the next reminder an hour later.
+    A low battery already at the loss gets no second SMS (the alert of the loss tells the SOC). `/status` answers the
+    grid `null` while the SOLAX is stale (an open outage stays `lost`). An answer of the dongle shorter than 170
+    words reads as before, without the grid point (`gridPoint` null - not known). Loss, low battery, return:
+    `publishAlertSms` / `publishInfoSms`; the reminder `publishReminder` (no SMS).
+  - `grid_outage` (V4) holds at most one open row (partial unique index `grid_outage_one_open`, checked on the
+    rehearsal); `last_reminded_at` and `low_soc_alerted_at` are there so that a restart neither repeats nor forgets.
+  - **The limit**: with the battery empty or the inverter off the service is down with the house - an outage is
+    told only while the inverter runs; an outage that began and ended while the cluster was down is not stored.
+    After a start the grid is `null` until two reads agree, never read as present.
+  - **Rehearsed** (2026-10-31): the released 0.3.0 image applied V1-V3 on a throwaway PostgreSQL with SSL (a user
+    with `USAGE, CREATE` on `public` only), the new jar V4; a second open row refused by the index; a restart with
+    an open row logged "still open", answered `grid: lost` and the row in `/outages`, the due reminder failing on
+    the missing broker without stopping the pass.
 - **The map of type 33** (`Type33`, pinned by `Type33Test` on `src/test/resources/solax/*.json` - answers of
   2026-10-23 19:52, 2026-10-27 20:49, 2026-10-28 10:27 and 2026-10-29 19:09 with invented dongle and inverter serials;
   the last three compared with SolaxCloud (the last one with the Pro 3EM as well), Developer Platform `v2/device/realtime_data` and `v2/plant/realtime_data`, within one
@@ -155,7 +197,7 @@ SOLAX (HAS-328), and reviews them in IntelliJ.
   | 125 | SOC % | `battery.soc` |
   | 127 | battery temperature °C, signed | `battery.temperature` |
   | 138 | battery cycles | `battery.cycles` |
-  | 167-169 | voltage per phase at the grid connection point ÷10 V | no |
+  | 167-169 | voltage per phase at the grid connection point ÷10 V - 0 with the grid lost | `gridPoint` (not served; the outage watch, HAS-334) |
 
   Information[2] is the inverter serial (checked against the registry). The grid power of the SOLAX is served with the
   inverter only, not stored - the grid history is the Pro 3EM's (`grid_reading`, HAS-327). **Still unknown**: the EPS

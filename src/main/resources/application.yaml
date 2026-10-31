@@ -74,6 +74,22 @@ energy:
     interval: PT15S
     stale-after: PT1M
     battery-capacity: 26.5
+  # the outages of the grid as the SOLAX sees them (HAS-334): one more alert by SMS when the battery falls below
+  # low-soc % during an outage, a reminder every reminder-every while it lasts
+  outage:
+    low-soc: 20
+    reminder-every: PT1H
+
+# the notifications of the outages (HAS-334): the exchange is on the same broker as spring.rabbitmq.*, on its own
+# virtual host - a second connection (NotificationRabbitConfig); env is one of the two headers it routes by.
+# cholewa.notification.enabled of cholewa-commons stays unset: its publisher uses the connection to /device
+notification:
+  virtual-host: /notification
+  username: notification
+  # no default on purpose: with one the pod would start and fail every publish (cholewa.required-properties)
+  password: ${notification-rabbitmq-password}
+  exchange: notification
+  env: prod
 
 internal:
   service:
@@ -87,6 +103,8 @@ cholewa:
       variable: database-password
     - property: spring.rabbitmq.password
       variable: rabbitmq-password
+    - property: notification.password
+      variable: notification-rabbitmq-password
     - property: energy.meter.device-id
       variable: meter-device-id
     - property: energy.meter.address
@@ -138,6 +156,9 @@ rabbitmq:
   queue:
     name: device.dev.energy
 
+notification:
+  env: dev
+
 internal:
   service:
     database: http://localhost:6005
@@ -178,6 +199,10 @@ database:
 rabbitmq:
   queue:
     name: device.test.energy
+
+notification:
+  password: test
+  env: test
 
 # a meter that is not the one of the house, at an address nothing listens on
 energy:

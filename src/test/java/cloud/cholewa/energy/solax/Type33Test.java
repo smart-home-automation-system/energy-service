@@ -40,6 +40,27 @@ class Type33Test {
         assertThat(reading.totalYield()).isEqualTo(4510.6);
     }
 
+    //HAS-334: the voltage at the grid connection point, Data[167-169] ÷10 - the grid itself, what the outage watch reads
+    @Test
+    void should_read_the_voltage_at_the_grid_connection_point() {
+        assertThat(reading(EVENING).gridPoint()).isEqualTo(new SolaxReading.GridPoint(235.6, 234.7, 234.5));
+        assertThat(reading(SolaxSamples.GRID_IMPORT).gridPoint())
+            .isEqualTo(new SolaxReading.GridPoint(233.4, 232.6, 234.1));
+    }
+
+    //an answer too short for the grid connection point is read all the same - the grid is then not known
+    @Test
+    void should_read_an_answer_without_the_grid_connection_point() {
+        //the first 150 words of Data kept
+        final String body = SolaxSamples.sample(EVENING).replaceFirst("(\"Data\":\\[(?:\\d+,){149}\\d+)[^\\]]*\\]",
+            "$1]");
+
+        final SolaxReading reading = Type33.parse(body, SolaxSamples.JSON);
+
+        assertThat(reading.gridPoint()).isNull();
+        assertThat(reading.battery().soc()).isEqualTo(64.0);
+    }
+
     //the power and the current are signed 16-bit words: 63556 is -1980 W, 65150 is -38.6 A
     @Test
     void should_read_the_battery_discharging() {

@@ -45,7 +45,7 @@
 		<mockwebserver3.version>5.5.1</mockwebserver3.version>
 
 		<!--  internal dependencies versions-->
-		<cholewa-commons.version>1.12.0</cholewa-commons.version>
+		<cholewa-commons.version>1.13.0</cholewa-commons.version>
 		<smart-home-sdk.version>1.15.0</smart-home-sdk.version>
 		<shelly-client.version>2.3.0</shelly-client.version>
 

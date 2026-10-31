@@ -7,12 +7,16 @@ import cloud.cholewa.energy.api.model.InverterReply;
 import cloud.cholewa.energy.api.model.GridReply;
 import cloud.cholewa.energy.api.model.PhaseReply;
 import cloud.cholewa.energy.api.model.PvReply;
+import cloud.cholewa.energy.api.model.GridStateReply;
+import cloud.cholewa.energy.api.model.OutageReply;
 import cloud.cholewa.energy.api.model.SourceStatusReply;
+import cloud.cholewa.energy.api.model.StatusReply;
 import cloud.cholewa.energy.config.ExceptionHandlerConfig;
 import cloud.cholewa.energy.error.EnergyException;
 import cloud.cholewa.energy.inverter.BatteryService;
 import cloud.cholewa.energy.inverter.InverterService;
 import cloud.cholewa.energy.meter.GridService;
+import cloud.cholewa.energy.outage.GridOutageService;
 import cloud.cholewa.energy.solax.RunMode;
 import cloud.cholewa.energy.status.EnergyStatusService;
 import org.junit.jupiter.api.Test;
@@ -47,27 +51,84 @@ class EnergyControllerTest {
     private InverterService inverterService;
     @MockitoBean
     private BatteryService batteryService;
+    @MockitoBean
+    private GridOutageService gridOutageService;
 
-    //a source not known is reachable null, written out - never false; its last reading is left out
+    //a source not known is reachable null, written out - never false; its last reading is left out. The grid as the
+    //SOLAX sees it next to the sources (HAS-334)
     @Test
     void should_answer_every_source_with_whether_it_answers() {
-        when(energyStatusService.status()).thenReturn(Mono.just(List.of(
+        when(energyStatusService.reply()).thenReturn(Mono.just(new StatusReply(List.of(
             new SourceStatusReply("meter", true, LocalDateTime.of(2026, 10, 27, 11, 0, 5)),
             new SourceStatusReply("solax", false, null),
             new SourceStatusReply("sofar", null, null),
             new SourceStatusReply("solaxCloud", null, null)
-        )));
+        ), new GridStateReply("lost", LocalDateTime.of(2026, 10, 31, 19, 42)))));
 
         webTestClient.get().uri("/status")
             .exchange()
             .expectStatus().isOk()
             .expectBody().json("""
+                {
+                  "sources": [
+                    {"source": "meter", "reachable": true, "lastReadingAt": "2026-10-27T11:00:05"},
+                    {"source": "solax", "reachable": false},
+                    {"source": "sofar", "reachable": null},
+                    {"source": "solaxCloud", "reachable": null}
+                  ],
+                  "grid": {"state": "lost", "since": "2026-10-31T19:42:00"}
+                }""", JsonCompareMode.STRICT);
+    }
+
+    //after a start, before two reads of the SOLAX agree: written out as null, never read as present
+    @Test
+    void should_answer_a_grid_not_known_as_null() {
+        when(energyStatusService.reply()).thenReturn(Mono.just(new StatusReply(List.of(),
+            GridStateReply.notKnown())));
+
+        webTestClient.get().uri("/status")
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody().json("""
+                {"sources": [], "grid": {"state": null}}""", JsonCompareMode.STRICT);
+    }
+
+    //HAS-334: the outages of a range, one still open - its end left out
+    @Test
+    void should_answer_the_outages_of_a_range() {
+        when(gridOutageService.outages(LocalDateTime.of(2026, 10, 1, 0, 0), LocalDateTime.of(2026, 11, 1, 0, 0)))
+            .thenReturn(Mono.just(List.of(
+                new OutageReply(LocalDateTime.of(2026, 10, 4, 3, 10), LocalDateTime.of(2026, 10, 4, 5, 2), 80.0,
+                    52.0, 52.0),
+                new OutageReply(LocalDateTime.of(2026, 10, 31, 19, 42), null, 64.0, null, 61.0))));
+
+        webTestClient.get().uri("/outages?from=2026-10-01T00:00:00&to=2026-11-01T00:00:00")
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody().json("""
                 [
-                  {"source": "meter", "reachable": true, "lastReadingAt": "2026-10-27T11:00:05"},
-                  {"source": "solax", "reachable": false},
-                  {"source": "sofar", "reachable": null},
-                  {"source": "solaxCloud", "reachable": null}
+                  {"startedAt": "2026-10-04T03:10:00", "endedAt": "2026-10-04T05:02:00", "socAtStart": 80.0,
+                   "socAtEnd": 52.0, "lowestSoc": 52.0},
+                  {"startedAt": "2026-10-31T19:42:00", "socAtStart": 64.0, "lowestSoc": 61.0}
                 ]""", JsonCompareMode.STRICT);
+    }
+
+    @Test
+    void should_refuse_a_range_of_outages_it_cannot_answer() {
+        when(gridOutageService.outages(LocalDateTime.of(2026, 11, 1, 0, 0), LocalDateTime.of(2026, 10, 1, 0, 0)))
+            .thenReturn(Mono.error(EnergyException.invalidRange("from must be before to, at most 366 days apart")));
+
+        webTestClient.get().uri("/outages?from=2026-11-01T00:00:00&to=2026-10-01T00:00:00")
+            .exchange()
+            .expectStatus().isBadRequest()
+            .expectBody().jsonPath("$.errors[0].code").isEqualTo("INVALID_RANGE");
+    }
+
+    @Test
+    void should_refuse_outages_without_a_range() {
+        webTestClient.get().uri("/outages?from=2026-11-01T00:00:00")
+            .exchange()
+            .expectStatus().isBadRequest();
     }
 
     @Test

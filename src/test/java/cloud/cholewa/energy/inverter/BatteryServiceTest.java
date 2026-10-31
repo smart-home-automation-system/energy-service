@@ -69,7 +69,8 @@ class BatteryServiceTest {
             evening.temperature(), evening.dailyYield(), evening.totalYield(), evening.pv1(), evening.pv2(),
             evening.gridPower(),
             new SolaxReading.Battery(battery.soc(), battery.soh(), power, battery.voltage(), battery.current(),
-                battery.temperature(), battery.cycles(), battery.chargedToday(), battery.dischargedToday()));
+                battery.temperature(), battery.cycles(), battery.chargedToday(), battery.dischargedToday()),
+            evening.gridPoint());
         return service.replyOf(new SolaxState(ID, withPower, READ_AT, true), NOW).direction();
     }
 }
