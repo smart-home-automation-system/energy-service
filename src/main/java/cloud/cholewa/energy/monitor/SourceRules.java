@@ -126,14 +126,14 @@ final class SourceRules {
     }
 
     private static SourceAlertEntity opened(final Source source, final LocalDateTime since) {
-        return new SourceAlertEntity(null, source.wireName(), source.kind().wireName(), since, null, null);
+        return new SourceAlertEntity(null, source.wireName(), source.kind().wireName(), since, null, null, null);
     }
 
     private static SourceAlertEntity told(final SourceAlertEntity row, final LocalDateTime at) {
-        return new SourceAlertEntity(row.id(), row.source(), row.kind(), row.openedAt(), at, row.closedAt());
+        return new SourceAlertEntity(row.id(), row.source(), row.kind(), row.openedAt(), at, row.closedAt(), null);
     }
 
     private static SourceAlertEntity closed(final SourceAlertEntity row, final LocalDateTime at) {
-        return new SourceAlertEntity(row.id(), row.source(), row.kind(), row.openedAt(), row.lastToldAt(), at);
+        return new SourceAlertEntity(row.id(), row.source(), row.kind(), row.openedAt(), row.lastToldAt(), at, null);
     }
 }

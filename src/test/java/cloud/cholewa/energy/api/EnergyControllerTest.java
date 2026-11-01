@@ -201,9 +201,10 @@ class EnergyControllerTest {
         pv.put("pv2", new PvReply(272.8, 1.4, 385.0));
         when(inverterService.inverters()).thenReturn(Mono.just(List.of(
             new InverterReply("solax", 134L, "SOLAX inverter", "garage", RunMode.PERMANENT_FAULT, 1755.0, phases,
-                1282.0, pv, 1804.0, 50.01, 0.95, 48.0, 38.6, 4510.6, LocalDateTime.of(2026, 10, 27, 20, 49), false),
+                1282.0, pv, 1804.0, 50.01, 0.95, 48.0, 38.6, 4510.6, LocalDateTime.of(2026, 10, 27, 20, 49), false,
+                "local"),
             new InverterReply("sofar", 135L, "SOFAR inverter", "boiler", null, null, null, null, null, null, null,
-                null, null, null, null, null, true))));
+                null, null, null, null, null, true, null))));
 
         webTestClient.get().uri("/inverters")
             .exchange()
@@ -220,7 +221,7 @@ class EnergyControllerTest {
                           "pv2": {"voltage": 272.8, "current": 1.4, "power": 385.0}},
                    "gridPower": 1804.0,
                    "frequency": 50.01, "powerFactor": 0.95, "temperature": 48.0, "dailyYield": 38.6,
-                   "totalYield": 4510.6, "measuredAt": "2026-10-27T20:49:00", "stale": false},
+                   "totalYield": 4510.6, "measuredAt": "2026-10-27T20:49:00", "stale": false, "source": "local"},
                   {"id": "sofar", "registryId": 135, "name": "SOFAR inverter", "room": "boiler", "stale": true}
                 ]""", JsonCompareMode.STRICT);
     }
@@ -253,7 +254,7 @@ class EnergyControllerTest {
     void should_answer_the_battery() {
         when(batteryService.battery()).thenReturn(Mono.just(new BatteryReply(64.0, 99.0, -1980.0,
             BatteryDirection.DISCHARGING, 52.3, -38.6, 20.0, 132, 16.96, 26.6, 10.2,
-            LocalDateTime.of(2026, 10, 27, 20, 49), false)));
+            LocalDateTime.of(2026, 10, 27, 20, 49), false, "local")));
 
         webTestClient.get().uri("/battery")
             .exchange()
@@ -261,13 +262,14 @@ class EnergyControllerTest {
             .expectBody().json("""
                 {"soc": 64.0, "health": 99.0, "power": -1980.0, "direction": "discharging", "voltage": 52.3,
                  "current": -38.6, "temperature": 20.0, "cycles": 132, "remainingKwh": 16.96, "chargedToday": 26.6,
-                 "dischargedToday": 10.2, "measuredAt": "2026-10-27T20:49:00", "stale": false}""", JsonCompareMode.STRICT);
+                 "dischargedToday": 10.2, "measuredAt": "2026-10-27T20:49:00", "stale": false,
+                 "source": "local"}""", JsonCompareMode.STRICT);
     }
 
     @Test
     void should_answer_only_stale_for_a_battery_not_read() {
         when(batteryService.battery()).thenReturn(Mono.just(new BatteryReply(null, null, null, null, null, null, null,
-            null, null, null, null, null, true)));
+            null, null, null, null, null, true, null)));
 
         webTestClient.get().uri("/battery")
             .exchange()

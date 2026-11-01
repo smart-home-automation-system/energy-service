@@ -33,7 +33,7 @@ class InverterRegistryTest {
         registry.refresh().as(StepVerifier::create).verifyComplete();
 
         assertThat(registry.of(InverterBrand.SOLAX)).contains(new Inverter(134, "SOLAX inverter", RoomName.GARAGE,
-            InverterBrand.SOLAX, "H1234567890ABC", "192.0.2.158", "SABCDEFGHI", null));
+            InverterBrand.SOLAX, "H1234567890ABC", "192.0.2.158", "SABCDEFGHI", null, "B1234567890ABC"));
         assertThat(registry.of(InverterBrand.SOFAR)).hasValueSatisfying(sofar -> {
             assertThat(sofar.id()).isEqualTo(135);
             assertThat(sofar.loggerSerial()).isEqualTo(1234567890L);
@@ -96,7 +96,7 @@ class InverterRegistryTest {
     private static SmartDevice solax() {
         return new SmartDevice(134L).name("SOLAX inverter").room(RoomName.GARAGE)
             .inverter(new InverterBinding().brand(InverterBrand.SOLAX).serialNumber("H1234567890ABC")
-                .address("192.0.2.158").registrationNumber("SABCDEFGHI"));
+                .address("192.0.2.158").registrationNumber("SABCDEFGHI").batterySerialNumber("B1234567890ABC"));
     }
 
     private static SmartDevice sofar() {

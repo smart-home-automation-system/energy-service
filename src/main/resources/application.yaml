@@ -74,6 +74,17 @@ energy:
     interval: PT15S
     stale-after: PT1M
     battery-capacity: 26.5
+    # the SolaX Developer Platform (HAS-329): the backup of the dongle (the inverter and its battery every interval), the
+    # alarms of the plant every alarm-interval; a cloud answer older than stale-after is not served. The application of
+    # the owner and the plant from the manifest (the secret energy) - no default
+    cloud:
+      base-url: https://openapi-eu.solaxcloud.com
+      client-id: ${solax-client-id}
+      client-secret: ${solax-client-secret}
+      plant-id: ${solax-plant-id}
+      interval: PT5M
+      alarm-interval: PT15M
+      stale-after: PT15M
   # the outages of the grid as the SOLAX sees them (HAS-334): one more alert by SMS when the battery falls below
   # low-soc % during an outage, a reminder every reminder-every while it lasts
   outage:
@@ -120,6 +131,12 @@ cholewa:
       variable: meter-device-id
     - property: energy.meter.address
       variable: meter-address
+    - property: energy.solax.cloud.client-id
+      variable: solax-client-id
+    - property: energy.solax.cloud.client-secret
+      variable: solax-client-secret
+    - property: energy.solax.cloud.plant-id
+      variable: solax-plant-id
 
 server:
   port: 6200
@@ -220,6 +237,13 @@ energy:
   meter:
     device-id: shellypro3em-000000000000
     address: localhost:1
+  # a cloud at an address nothing listens on, an application and a plant that are not the ones of the house
+  solax:
+    cloud:
+      base-url: http://localhost:1
+      client-id: test
+      client-secret: test
+      plant-id: "1000000000000000000"
 
 internal:
   service:

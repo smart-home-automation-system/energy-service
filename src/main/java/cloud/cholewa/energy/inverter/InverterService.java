@@ -10,6 +10,10 @@ import cloud.cholewa.energy.solax.SolaxProperties;
 import cloud.cholewa.energy.solax.SolaxReading;
 import cloud.cholewa.energy.solax.SolaxState;
 import cloud.cholewa.energy.solax.SolaxTracker;
+import cloud.cholewa.energy.solaxcloud.CloudInverter;
+import cloud.cholewa.energy.solaxcloud.SolaxCloudProperties;
+import cloud.cholewa.energy.solaxcloud.SolaxCloudState;
+import cloud.cholewa.energy.solaxcloud.SolaxCloudTracker;
 import cloud.cholewa.home.model.InverterBrand;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -21,18 +25,27 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.stream.Stream;
 
 //The inverters as GET /home/energy/inverters and /inverters/{id} answer them (HAS-328): every inverter of the registry,
 //by its brand as the id; the SOLAX with its reading from the state in memory - the dongle is never asked for a request.
 //The SOFAR answers its registry entry until its task (HAS-330). Before the registry was read once the answer is
-//REGISTRY_UNAVAILABLE. "Now" is read inside the chain
+//REGISTRY_UNAVAILABLE. "Now" is read inside the chain. While the dongle is stale the SOLAX answers what the SolaX cloud
+//read last, when it is of the same inverter and fresh (HAS-329), with source cloud
 @Service
 @RequiredArgsConstructor
 public class InverterService {
 
+    static final String LOCAL = "local";
+    static final String CLOUD = "cloud";
+
     private final InverterRegistry inverterRegistry;
     private final SolaxTracker solaxTracker;
     private final SolaxProperties solaxProperties;
+    private final SolaxCloudTracker solaxCloudTracker;
+    private final SolaxCloudProperties solaxCloudProperties;
     private final Clock clock;
 
     public Mono<List<InverterReply>> inverters() {
@@ -57,10 +70,43 @@ public class InverterService {
 
     InverterReply replyOf(final Inverter inverter, final LocalDateTime now) {
         final SolaxState state = solaxTracker.current();
-        return inverter.brand() == InverterBrand.SOLAX && state.reading() != null
-            && Long.valueOf(inverter.id()).equals(state.inverterId())
-            ? solax(inverter, state, now)
-            : registered(inverter);
+        final boolean local = inverter.brand() == InverterBrand.SOLAX && state.reading() != null
+            && Long.valueOf(inverter.id()).equals(state.inverterId());
+        if (local && !state.isStale(now, solaxProperties.staleAfter())) {
+            return solax(inverter, state, now);
+        }
+        return cloud(inverter, now, local ? state.readingAt() : null)
+            .orElseGet(() -> local ? solax(inverter, state, now) : registered(inverter));
+    }
+
+    //the SolaX cloud for the SOLAX while the dongle is stale: its last answer, when it is of this inverter, fresh and newer
+    //than the reading of the dongle
+    private Optional<InverterReply> cloud(final Inverter inverter, final LocalDateTime now,
+                                          final LocalDateTime dongleReadingAt) {
+        final SolaxCloudState cloud = solaxCloudTracker.current();
+        return Optional.ofNullable(cloud.inverter())
+            .filter(answer -> inverter.brand() == InverterBrand.SOLAX)
+            .filter(answer -> Objects.equals(answer.deviceSn(), inverter.serialNumber()))
+            .filter(answer -> cloud.fresh(answer.plantLocalTime(), now, solaxCloudProperties.staleAfter(),
+                dongleReadingAt))
+            .map(answer -> cloud(inverter, answer));
+    }
+
+    private static InverterReply cloud(final Inverter inverter, final CloudInverter answer) {
+        final Map<String, PhaseReply> phases = new LinkedHashMap<>();
+        phases.put("a", new PhaseReply(answer.acVoltage1(), answer.acCurrent1(), answer.acPower1(), null, null, null));
+        phases.put("b", new PhaseReply(answer.acVoltage2(), answer.acCurrent2(), answer.acPower2(), null, null, null));
+        phases.put("c", new PhaseReply(answer.acVoltage3(), answer.acCurrent3(), answer.acPower3(), null, null, null));
+        final Map<String, Double> mppt = Optional.ofNullable(answer.mpptMap()).orElse(Map.of());
+        final Map<String, PvReply> pv = new LinkedHashMap<>();
+        pv.put("pv1", new PvReply(mppt.get("MPPT1Voltage"), mppt.get("MPPT1Current"), mppt.get("MPPT1Power")));
+        pv.put("pv2", new PvReply(mppt.get("MPPT2Voltage"), mppt.get("MPPT2Current"), mppt.get("MPPT2Power")));
+        final Double acPower = Stream.of(answer.acPower1(), answer.acPower2(), answer.acPower3()).anyMatch(Objects::isNull)
+            ? null : answer.acPower1() + answer.acPower2() + answer.acPower3();
+        return new InverterReply(inverter.brand().getValue(), inverter.id(), inverter.name(), room(inverter), null,
+            acPower, phases, answer.mpptTotalInputPower(), pv, null, answer.acFrequency1(), answer.totalPowerFactor(),
+            answer.inverterTemperature(), answer.dailyYield(), answer.totalYield(),
+            SolaxCloudState.plantTime(answer.plantLocalTime()), false, CLOUD);
     }
 
     private InverterReply solax(final Inverter inverter, final SolaxState state, final LocalDateTime now) {
@@ -70,12 +116,12 @@ public class InverterService {
             reading.gridPower(),
             reading.frequency(), reading.powerFactor(),
             reading.temperature(), reading.dailyYield(), reading.totalYield(), state.readingAt(),
-            state.isStale(now, solaxProperties.staleAfter()));
+            state.isStale(now, solaxProperties.staleAfter()), LOCAL);
     }
 
     private static InverterReply registered(final Inverter inverter) {
         return new InverterReply(inverter.brand().getValue(), inverter.id(), inverter.name(), room(inverter),
-            null, null, null, null, null, null, null, null, null, null, null, null, true);
+            null, null, null, null, null, null, null, null, null, null, null, null, true, null);
     }
 
     private static String room(final Inverter inverter) {

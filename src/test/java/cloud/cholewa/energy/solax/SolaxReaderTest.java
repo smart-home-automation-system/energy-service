@@ -123,7 +123,7 @@ class SolaxReaderTest {
     @Test
     void should_read_nothing_from_a_solax_without_what_its_dongle_needs() {
         final Inverter withoutNumber = new Inverter(SolaxSamples.ID, "SOLAX inverter", null, InverterBrand.SOLAX,
-            SolaxSamples.SERIAL, "192.0.2.158", null, null);
+            SolaxSamples.SERIAL, "192.0.2.158", null, null, null);
         when(registry.of(InverterBrand.SOLAX)).thenReturn(Optional.of(withoutNumber));
 
         reader.read().as(StepVerifier::create).verifyComplete();
@@ -186,7 +186,7 @@ class SolaxReaderTest {
     @Test
     void should_refuse_an_answer_for_another_inverter() {
         final Inverter other = new Inverter(SolaxSamples.ID, "SOLAX inverter", null, InverterBrand.SOLAX,
-            "H0000000000000", "192.0.2.158", SolaxSamples.REGISTRATION, null);
+            "H0000000000000", "192.0.2.158", SolaxSamples.REGISTRATION, null, null);
         when(registry.of(InverterBrand.SOLAX)).thenReturn(Optional.of(other));
         when(client.read(other)).thenReturn(Mono.just(reading(EVENING)));
 

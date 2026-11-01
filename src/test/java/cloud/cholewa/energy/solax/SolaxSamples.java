@@ -33,6 +33,7 @@ public final class SolaxSamples {
 
     public static final String SERIAL = "H1234567890ABC";
     public static final String REGISTRATION = "SABCDEFGHI";
+    public static final String BATTERY_SERIAL = "B1234567890ABC";
     public static final long ID = 134;
     public static final ZoneId HOUSE = ZoneId.of("Europe/Warsaw");
     public static final Instant START = Instant.parse("2026-10-27T19:49:00Z");
@@ -56,12 +57,12 @@ public final class SolaxSamples {
 
     public static Inverter solax(final String address) {
         return new Inverter(ID, "SOLAX inverter", RoomName.GARAGE, InverterBrand.SOLAX, SERIAL, address, REGISTRATION,
-            null);
+            null, BATTERY_SERIAL);
     }
 
     public static Inverter sofar() {
         return new Inverter(135, "SOFAR inverter", RoomName.BOILER, InverterBrand.SOFAR, "SH1234567890ABCDEFGH",
-            "192.0.2.204", null, 1234567890L);
+            "192.0.2.204", null, 1234567890L, null);
     }
 
     //a clock that a test moves on

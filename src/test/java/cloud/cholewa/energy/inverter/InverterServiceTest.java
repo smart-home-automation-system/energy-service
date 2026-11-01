@@ -11,6 +11,9 @@ import cloud.cholewa.energy.solax.SolaxProperties;
 import cloud.cholewa.energy.solax.SolaxSamples;
 import cloud.cholewa.energy.solax.SolaxState;
 import cloud.cholewa.energy.solax.SolaxTracker;
+import cloud.cholewa.energy.solaxcloud.CloudSamples;
+import cloud.cholewa.energy.solaxcloud.SolaxCloudState;
+import cloud.cholewa.energy.solaxcloud.SolaxCloudTracker;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import reactor.test.StepVerifier;
@@ -38,13 +41,16 @@ class InverterServiceTest {
     private final SolaxSamples.MovableClock clock = new SolaxSamples.MovableClock();
     private final InverterRegistry registry = mock(InverterRegistry.class);
     private final SolaxTracker tracker = mock(SolaxTracker.class);
+    private final SolaxCloudTracker cloudTracker = mock(SolaxCloudTracker.class);
     private final InverterService service = new InverterService(registry, tracker,
-        new SolaxProperties(Duration.ofSeconds(15), Duration.ofMinutes(1), 26.5), clock);
+        new SolaxProperties(Duration.ofSeconds(15), Duration.ofMinutes(1), 26.5), cloudTracker,
+        CloudSamples.PROPERTIES, clock);
 
     @BeforeEach
     void setUp() {
         when(registry.current()).thenReturn(Optional.of(List.of(solax("192.0.2.158"), sofar())));
         when(tracker.current()).thenReturn(new SolaxState(ID, reading(EVENING), READ_AT, true));
+        when(cloudTracker.current()).thenReturn(new SolaxCloudState(null, null, null, null));
     }
 
     //the SOLAX with its reading, the SOFAR with its registry entry only until its task
@@ -52,7 +58,7 @@ class InverterServiceTest {
     void should_answer_every_inverter_of_the_registry() {
         service.inverters().as(StepVerifier::create)
             .expectNext(List.of(solaxReply(false), new InverterReply("sofar", 135L, "SOFAR inverter", "boiler",
-                null, null, null, null, null, null, null, null, null, null, null, null, true)))
+                null, null, null, null, null, null, null, null, null, null, null, null, true, null)))
             .verifyComplete();
     }
 
@@ -89,7 +95,7 @@ class InverterServiceTest {
 
         service.inverter("solax").as(StepVerifier::create)
             .expectNext(new InverterReply("solax", ID, "SOLAX inverter", "garage", null, null, null, null, null, null,
-                null, null, null, null, null, null, true))
+                null, null, null, null, null, null, true, null))
             .verifyComplete();
     }
 
@@ -138,6 +144,49 @@ class InverterServiceTest {
         pv.put("pv1", new PvReply(0.0, 0.0, 0.0));
         pv.put("pv2", new PvReply(0.0, 0.0, 0.0));
         return new InverterReply("solax", ID, "SOLAX inverter", "garage", RunMode.NORMAL, 1755.0, phases, 0.0, pv,
-            0.0, 50.01, 0.95, 48.0, 38.6, 4510.6, READ_AT, stale);
+            0.0, 50.01, 0.95, 48.0, 38.6, 4510.6, READ_AT, stale, "local");
+    }
+
+    //HAS-329: the dongle stale, the SolaX cloud of the same inverter fresh - its answer with source cloud, the time of
+    //the plant, no run mode and no grid power (neither established in the cloud)
+    @Test
+    void should_answer_the_cloud_while_the_dongle_is_stale() {
+        when(tracker.current()).thenReturn(new SolaxState(ID, reading(EVENING), READ_AT.minusMinutes(5), false));
+        when(cloudTracker.current()).thenReturn(new SolaxCloudState(CloudSamples.inverterAt("2026-10-27 20:45:00"),
+            null, READ_AT, true));
+        final Map<String, PhaseReply> phases = new LinkedHashMap<>();
+        phases.put("a", new PhaseReply(235.4, 1.0, 187.0, null, null, null));
+        phases.put("b", new PhaseReply(235.7, 1.5, 311.0, null, null, null));
+        phases.put("c", new PhaseReply(238.1, 1.5, 328.0, null, null, null));
+        final Map<String, PvReply> pv = new LinkedHashMap<>();
+        pv.put("pv1", new PvReply(644.1, 1.2, 772.0));
+        pv.put("pv2", new PvReply(272.0, 1.1, 301.0));
+
+        service.inverter("solax").as(StepVerifier::create)
+            .expectNext(new InverterReply("solax", ID, "SOLAX inverter", "garage", null, 826.0, phases, 1073.0, pv,
+                null, 49.97, 0.86, 48.0, 4.0, 4558.4, LocalDateTime.of(2026, 10, 27, 20, 45), false, "cloud"))
+            .verifyComplete();
+    }
+
+    //a cloud answer older than its bound, or of another inverter, never stands for the dongle
+    @Test
+    void should_keep_the_stale_dongle_when_the_cloud_is_old_or_of_another_inverter() {
+        when(tracker.current()).thenReturn(new SolaxState(ID, reading(EVENING), READ_AT.minusMinutes(5), false));
+        when(cloudTracker.current()).thenReturn(new SolaxCloudState(CloudSamples.inverterAt("2026-10-27 20:33:59"),
+            null, READ_AT, true));
+
+        service.inverter("solax").as(StepVerifier::create)
+            .assertNext(reply -> assertThat(reply.source()).isEqualTo("local"))
+            .verifyComplete();
+
+        when(registry.current()).thenReturn(Optional.of(List.of(new cloud.cholewa.energy.registry.Inverter(ID,
+            "SOLAX inverter", null, cloud.cholewa.home.model.InverterBrand.SOLAX, "H0000000000000", "192.0.2.158",
+            "SABCDEFGHI", null, null))));
+        when(cloudTracker.current()).thenReturn(new SolaxCloudState(CloudSamples.inverterAt("2026-10-27 20:45:00"),
+            null, READ_AT, true));
+
+        service.inverter("solax").as(StepVerifier::create)
+            .assertNext(reply -> assertThat(reply.source()).isEqualTo("local"))
+            .verifyComplete();
     }
 }

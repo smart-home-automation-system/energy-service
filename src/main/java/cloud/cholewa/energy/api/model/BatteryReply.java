@@ -11,6 +11,8 @@ import java.time.LocalDateTime;
 //power); temperature °C; cycles - the charge cycles of its life; remainingKwh - the energy left, the SOC of the usable
 //capacity of the plant; chargedToday, dischargedToday - kWh
 //measuredAt - the house time of the reading; stale - no reading, older than its bound, or the last read failed
+//source - local (the dongle) or cloud (the SolaX cloud, while the dongle is unreachable - HAS-329: chargedToday and
+//dischargedToday left out); left out without a reading
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record BatteryReply(
     Double soc,
@@ -25,6 +27,7 @@ public record BatteryReply(
     Double chargedToday,
     Double dischargedToday,
     LocalDateTime measuredAt,
-    @JsonInclude(JsonInclude.Include.ALWAYS) boolean stale
+    @JsonInclude(JsonInclude.Include.ALWAYS) boolean stale,
+    String source
 ) {
 }

@@ -70,7 +70,11 @@ class EnergyServiceApplicationTest {
         assertThat(required(2)).containsExactly("notification.password", "notification-rabbitmq-password");
         assertThat(required(3)).containsExactly("energy.meter.device-id", "meter-device-id");
         assertThat(required(4)).containsExactly("energy.meter.address", "meter-address");
-        assertThat(applicationContext.getEnvironment().getProperty("cholewa.required-properties[5].property")).isNull();
+        //HAS-329: the application of the owner in the SolaX cloud and the plant of the house (the secret energy)
+        assertThat(required(5)).containsExactly("energy.solax.cloud.client-id", "solax-client-id");
+        assertThat(required(6)).containsExactly("energy.solax.cloud.client-secret", "solax-client-secret");
+        assertThat(required(7)).containsExactly("energy.solax.cloud.plant-id", "solax-plant-id");
+        assertThat(applicationContext.getEnvironment().getProperty("cholewa.required-properties[8].property")).isNull();
     }
 
     //the listener returns a Mono: with the default ack mode the container acks before the message is handled

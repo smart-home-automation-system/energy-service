@@ -44,6 +44,8 @@ public class SourceMonitor {
     static final Duration LIMIT = Duration.ofSeconds(50);
     //six notices of one pass at most (a return, an alert, a reminder and a phase each) fit in the bound of the pass
     static final Duration NOTICE_TIMEOUT = Duration.ofSeconds(6);
+    //the alarms of the SOLAX share the table (HAS-329) and are not this monitor's
+    static final List<String> KINDS = List.of(Source.Kind.SILENT.wireName(), Source.Kind.OVERLOAD.wireName());
 
     private final SolaxTracker solaxTracker;
     private final GridMeterTracker gridMeterTracker;
@@ -89,7 +91,7 @@ public class SourceMonitor {
     private Mono<Void> load() {
         return Mono.fromSupplier(watch::get)
             .filter(held -> !held.loaded())
-            .flatMap(held -> sourceAlertRepository.findByClosedAtIsNull()
+            .flatMap(held -> sourceAlertRepository.findByClosedAtIsNullAndKindIn(KINDS)
                 .collectList()
                 .doOnNext(rows -> watch.set(SourceWatch.loaded(open(rows))))
                 .then()
