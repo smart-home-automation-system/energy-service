@@ -32,7 +32,6 @@ class OutageRulesTest {
 
     private Decision at(final LocalDateTime now, final SolaxState solax) {
         final Decision decision = OutageRules.decide(watch, solax, now, PROPERTIES, CAPACITY);
-        final GridOutageEntity open = decision.next().open();
         watch = decision.next().settled();
         return decision;
     }

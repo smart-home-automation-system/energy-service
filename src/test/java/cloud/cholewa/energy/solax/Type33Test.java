@@ -1,6 +1,8 @@
 package cloud.cholewa.energy.solax;
 
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 
 import static cloud.cholewa.energy.solax.SolaxSamples.DAY;
 import static cloud.cholewa.energy.solax.SolaxSamples.EARLIER_EVENING;
@@ -52,8 +54,12 @@ class Type33Test {
     @Test
     void should_read_an_answer_without_the_grid_connection_point() {
         //the first 150 words of Data kept
-        final String body = SolaxSamples.sample(EVENING).replaceFirst("(\"Data\":\\[(?:\\d+,){149}\\d+)[^\\]]*\\]",
-            "$1]");
+        final ObjectNode answer = (ObjectNode) SolaxSamples.JSON.readTree(SolaxSamples.sample(EVENING));
+        final ArrayNode data = (ArrayNode) answer.get("Data");
+        while (data.size() > 150) {
+            data.remove(data.size() - 1);
+        }
+        final String body = SolaxSamples.JSON.writeValueAsString(answer);
 
         final SolaxReading reading = Type33.parse(body, SolaxSamples.JSON);
 

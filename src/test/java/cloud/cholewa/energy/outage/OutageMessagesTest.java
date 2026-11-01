@@ -25,8 +25,8 @@ class OutageMessagesTest {
             OutageMessages.lowBattery(START, eps(19, -10), CAPACITY),
             OutageMessages.back(START, later, present(100, 0)));
 
-        assertThat(texts).allSatisfy(text -> assertThat(("ERROR: " + text).length()).isLessThanOrEqualTo(160));
-        assertThat(texts).allSatisfy(text -> assertThat(text).matches("[ -~]+"));
+        assertThat(texts).allSatisfy(text -> assertThat("ERROR: " + text).hasSizeLessThanOrEqualTo(160)
+            .matches("[ -~]+"));
     }
 
     @Test

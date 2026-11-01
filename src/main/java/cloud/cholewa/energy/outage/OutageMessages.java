@@ -4,6 +4,7 @@ import cloud.cholewa.energy.solax.SolaxReading;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 import java.util.Optional;
@@ -41,9 +42,11 @@ final class OutageMessages {
             + soc(reading) + ".";
     }
 
-    //"1 h 5 min", "25 min"
+    //"1 h 5 min", "25 min" - the times of the house in its zone, so that an outage across the change of the clocks
+    //has its real length
     static String length(final LocalDateTime from, final LocalDateTime to) {
-        return minutes(Math.max(0, Duration.between(from, to).toMinutes()));
+        final ZoneId house = ZoneId.systemDefault();
+        return minutes(Math.max(0, Duration.between(from.atZone(house), to.atZone(house)).toMinutes()));
     }
 
     private static String minutes(final long minutes) {
