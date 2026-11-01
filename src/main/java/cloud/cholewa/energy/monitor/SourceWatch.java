@@ -56,8 +56,16 @@ record SourceWatch(
         return new SourceWatch(loaded, open, unsaved, put(aboveSince, source, since), belowSince);
     }
 
+    SourceWatch withoutAbove(final Source source) {
+        return new SourceWatch(loaded, open, unsaved, remove(aboveSince, source), belowSince);
+    }
+
     SourceWatch withBelow(final Source source, final LocalDateTime since) {
         return new SourceWatch(loaded, open, unsaved, aboveSince, put(belowSince, source, since));
+    }
+
+    SourceWatch withoutBelow(final Source source) {
+        return new SourceWatch(loaded, open, unsaved, aboveSince, remove(belowSince, source));
     }
 
     //the row the database took: no longer unsaved unless a newer one of its episode came meanwhile, and the open
@@ -85,11 +93,14 @@ record SourceWatch(
     private static <V> Map<Source, V> put(final Map<Source, V> map, final Source source, final V value) {
         final Map<Source, V> next = new EnumMap<>(Source.class);
         next.putAll(map);
-        if (value == null) {
-            next.remove(source);
-        } else {
-            next.put(source, value);
-        }
+        next.put(source, Objects.requireNonNull(value));
+        return next;
+    }
+
+    private static <V> Map<Source, V> remove(final Map<Source, V> map, final Source source) {
+        final Map<Source, V> next = new EnumMap<>(Source.class);
+        next.putAll(map);
+        next.remove(source);
         return next;
     }
 

@@ -88,22 +88,23 @@ final class SourceRules {
     private static Phase phase(final SourceWatch held, final Source phase, final Double current,
                                final LocalDateTime now, final OverloadProperties overload) {
         if (current == null) {
-            return new Phase(held.withAbove(phase, null).withBelow(phase, null), List.of());
+            return new Phase(held.withoutAbove(phase).withoutBelow(phase), List.of());
         }
         final boolean above = current > overload.phaseCurrentWarn();
         final SourceAlertEntity open = held.open().get(phase);
         if (open == null) {
             final LocalDateTime since = Optional.ofNullable(held.aboveSince().get(phase)).orElse(now);
-            final SourceWatch counted = held.withBelow(phase, null).withAbove(phase, above ? since : null);
+            final SourceWatch cleared = held.withoutBelow(phase);
+            final SourceWatch counted = above ? cleared.withAbove(phase, since) : cleared.withoutAbove(phase);
             if (!above || since.plus(overload.overloadAfter()).isAfter(now)) {
                 return new Phase(counted, List.of());
             }
             final SourceAlertEntity opened = opened(phase, since);
-            return new Phase(counted.withAbove(phase, null).with(opened, phase), List.of(overloaded(phase, opened,
+            return new Phase(counted.withoutAbove(phase).with(opened, phase), List.of(overloaded(phase, opened,
                 current, now, overload)));
         }
         if (above) {
-            final SourceWatch counted = held.withBelow(phase, null);
+            final SourceWatch counted = held.withoutBelow(phase);
             return new Phase(counted, open.lastToldAt() == null
                 ? List.of(overloaded(phase, open, current, now, overload)) : List.of());
         }
