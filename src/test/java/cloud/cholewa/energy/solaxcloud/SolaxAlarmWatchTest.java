@@ -29,11 +29,13 @@ class SolaxAlarmWatchTest {
     private final SolaxCloudClient client = mock(SolaxCloudClient.class);
     private final SourceAlertRepository repository = mock(SourceAlertRepository.class);
     private final NotificationPublisher publisher = mock(NotificationPublisher.class);
-    private final SolaxAlarmWatch watch = new SolaxAlarmWatch(client, repository, publisher,
+    private final SolaxAlarmWatch watch = new SolaxAlarmWatch(client, repository, publisher, CloudSamples.PROPERTIES,
         new SolaxSamples.MovableClock());
 
-    private static final CloudAlarm ONGOING = new CloudAlarm("Bat Power Low", "17", "1", 2, 1, "2026-10-27 20:30:00",
+    private static final CloudAlarm ONGOING = new CloudAlarm("Grid Volt Fault", "1", "1", 1, 1, "2026-10-27 20:30:00",
         null, SolaxSamples.SERIAL);
+    private static final CloudAlarm BAT_POWER_LOW = new CloudAlarm("Bat Power Low", "17", "1", 2, 1,
+        "2026-10-27 20:30:00", null, SolaxSamples.SERIAL);
 
     @BeforeEach
     void setUp() {
@@ -49,9 +51,20 @@ class SolaxAlarmWatchTest {
 
         watch.check().as(StepVerifier::create).verifyComplete();
 
-        verify(publisher).publishAlert("SOLAX alarm: Bat Power Low (error 17, type 1, level 2) since 20:30.");
+        verify(publisher).publishAlert("SOLAX alarm: Grid Volt Fault (error 1, type 1, level 1) since 20:30.");
         verify(repository).save(argThat(row -> row.id() == null && row.closedAt() == null
-            && "17|2026-10-27 20:30:00|Bat Power Low".equals(row.detail())));
+            && "1|2026-10-27 20:30:00|Grid Volt Fault".equals(row.detail())));
+    }
+
+    //owner, 2026-11-01: Bat Power Low (17) is the battery at its floor, almost every day - never told
+    @Test
+    void should_leave_out_the_ignored_alarm_codes() {
+        when(client.alarms(true)).thenReturn(Mono.just(new CloudAlarm.Page(2, 1, List.of(BAT_POWER_LOW, ONGOING))));
+
+        watch.check().as(StepVerifier::create).verifyComplete();
+
+        verify(publisher).publishAlert("SOLAX alarm: Grid Volt Fault (error 1, type 1, level 1) since 20:30.");
+        verify(repository, org.mockito.Mockito.times(1)).save(any());
     }
 
     @Test

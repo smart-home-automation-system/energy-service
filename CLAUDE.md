@@ -207,7 +207,8 @@ and reviews them in IntelliJ.
     its `dailyYield` (2.5 against 4.0 kWh on 2026-11-01) - for HAS-331.
   - `SolaxAlarmWatch` (every alarm interval, bounded at 1 min): the first page of the ongoing alarms (more is a WARN)
     against the open `alarm` rows; **the table follows the broker** (light-service): a row only once its notice was
-    published. `SourceMonitor` reads only `silent` and `overload` rows (`KINDS`).
+    published. `SourceMonitor` reads only `silent` and `overload` rows (`KINDS`). The codes of `ignored-alarm-codes`
+    (17 "Bat Power Low", owner 2026-11-01: the battery at its floor, almost daily) are left out before the decision.
   - **The writes are prepared, not sent**: `setSelfUse(JsonNode)` and `requestStatus` - the body is the caller's; the
     documentation of the platform is behind its login, so the charge task verifies the fields with the owner first.
   - **Rehearsed** (2026-11-01): the released 0.5.0 image applied V1-V5 with an open meter row, the new jar V6; two alarms

@@ -10,6 +10,7 @@ import org.springframework.validation.annotation.Validated;
 
 import java.net.URI;
 import java.time.Duration;
+import java.util.List;
 import java.time.temporal.ChronoUnit;
 
 //The SolaX Developer Platform (HAS-329).
@@ -18,6 +19,8 @@ import java.time.temporal.ChronoUnit;
 //interval - the inverter and its battery read (PT5M; 5 - 60 min, a bare number is minutes)
 //alarmInterval - the alarms of the plant read (PT15M; 5 - 60 min)
 //staleAfter - a cloud reading older than this is not served (PT15M; 5 min - 1 h)
+//ignoredAlarmCodes - the error codes of the alarms the household is not told of: 17 "Bat Power Low" comes with the
+//battery at its floor, almost every day (owner, 2026-11-01)
 @Validated
 @ConfigurationProperties(prefix = "energy.solax.cloud")
 public record SolaxCloudProperties(
@@ -27,6 +30,7 @@ public record SolaxCloudProperties(
     @NotBlank String plantId,
     @NotNull @DurationUnit(ChronoUnit.MINUTES) @DurationMin(minutes = 5) @DurationMax(hours = 1) Duration interval,
     @NotNull @DurationUnit(ChronoUnit.MINUTES) @DurationMin(minutes = 5) @DurationMax(hours = 1) Duration alarmInterval,
-    @NotNull @DurationUnit(ChronoUnit.MINUTES) @DurationMin(minutes = 5) @DurationMax(hours = 1) Duration staleAfter
+    @NotNull @DurationUnit(ChronoUnit.MINUTES) @DurationMin(minutes = 5) @DurationMax(hours = 1) Duration staleAfter,
+    @NotNull List<String> ignoredAlarmCodes
 ) {
 }

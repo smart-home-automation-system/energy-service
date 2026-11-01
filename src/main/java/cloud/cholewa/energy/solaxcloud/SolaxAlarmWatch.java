@@ -25,7 +25,8 @@ import java.util.function.Function;
 //info. The table follows the broker, the pattern of light-service: a row is written only once its notification was
 //published, so one that failed is due again with the next pass and a restart neither repeats nor forgets an alarm. A
 //read of the cloud that failed decides nothing (one WARN an hour, FailureLog); only the first page of the alarms is
-//read - more than one page of ongoing alarms is a WARN
+//read - more than one page of ongoing alarms is a WARN. The alarms of energy.solax.cloud.ignored-alarm-codes are left
+//out before anything is decided (17 Bat Power Low: the battery at its floor, almost every day)
 @Slf4j
 @Component
 public class SolaxAlarmWatch {
@@ -37,6 +38,7 @@ public class SolaxAlarmWatch {
     private final SolaxCloudClient solaxCloudClient;
     private final SourceAlertRepository sourceAlertRepository;
     private final NotificationPublisher notificationPublisher;
+    private final SolaxCloudProperties solaxCloudProperties;
     private final Clock clock;
     private final FailureLog failureLog;
 
@@ -44,11 +46,13 @@ public class SolaxAlarmWatch {
         final SolaxCloudClient solaxCloudClient,
         final SourceAlertRepository sourceAlertRepository,
         final NotificationPublisher notificationPublisher,
+        final SolaxCloudProperties solaxCloudProperties,
         final Clock clock
     ) {
         this.solaxCloudClient = solaxCloudClient;
         this.sourceAlertRepository = sourceAlertRepository;
         this.notificationPublisher = notificationPublisher;
+        this.solaxCloudProperties = solaxCloudProperties;
         this.clock = clock;
         this.failureLog = new FailureLog(log, clock);
     }
@@ -73,13 +77,15 @@ public class SolaxAlarmWatch {
                     failure.toString()))));
     }
 
-    private static List<CloudAlarm> records(final CloudAlarm.Page page) {
+    private List<CloudAlarm> records(final CloudAlarm.Page page) {
         final List<CloudAlarm> records = Optional.ofNullable(page.records()).orElse(List.of());
         Optional.ofNullable(page.total())
             .filter(total -> total > records.size())
             .ifPresent(total -> log.warn("The SolaX cloud lists {} ongoing alarms, only the first {} are read", total,
                 records.size()));
-        return records;
+        return records.stream()
+            .filter(alarm -> !solaxCloudProperties.ignoredAlarmCodes().contains(alarm.errorCode()))
+            .toList();
     }
 
     //the ends first, then the new alarms; each list stored only once its notification was published
