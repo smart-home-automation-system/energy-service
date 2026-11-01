@@ -9,6 +9,7 @@ import java.io.UncheckedIOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.List;
 import java.util.Objects;
 
 //Answers of the SolaX cloud recorded on 2026-11-01 at 12:52 for the house (HAS-329), the serials of the inverter and the
@@ -24,7 +25,7 @@ public final class CloudSamples {
 
     public static SolaxCloudProperties properties(final URI baseUrl) {
         return new SolaxCloudProperties(baseUrl, "client", "secret", PLANT, Duration.ofMinutes(5),
-            Duration.ofMinutes(15), Duration.ofMinutes(15));
+            Duration.ofMinutes(15), Duration.ofMinutes(15), List.of("17"));
     }
 
     public static String sample(final String name) {

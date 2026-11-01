@@ -77,6 +77,13 @@ class EnergyServiceApplicationTest {
         assertThat(applicationContext.getEnvironment().getProperty("cholewa.required-properties[8].property")).isNull();
     }
 
+    //owner, 2026-11-01: Bat Power Low (17) is never told - the battery at its floor, almost every day
+    @Test
+    void should_leave_out_the_alarm_of_a_battery_at_its_floor() {
+        assertThat(applicationContext.getBean(cloud.cholewa.energy.solaxcloud.SolaxCloudProperties.class)
+            .ignoredAlarmCodes()).containsExactly("17");
+    }
+
     //the listener returns a Mono: with the default ack mode the container acks before the message is handled
     @Test
     void should_acknowledge_the_device_events_by_hand_three_at_a_time() {

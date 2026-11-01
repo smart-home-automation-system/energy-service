@@ -100,8 +100,9 @@ cluster runs in the house.
   left out there (not established in the cloud). Verified against the dongle on 2026-11-01 within one refresh.
 - **The alarms of the inverter** every `energy.solax.cloud.alarm-interval` (PT15M): a new ongoing alarm is an alert
   naming its name, error code, type and level, one the cloud no longer lists an info; kept in `source_alert` (kind
-  `alarm`) once told, so a restart neither repeats nor forgets one. The battery runs low most days - "Bat Power Low"
-  (error 17) came up about daily in October.
+  `alarm`) once told, so a restart neither repeats nor forgets one. The error codes of
+  `energy.solax.cloud.ignored-alarm-codes` are never told: 17 "Bat Power Low" comes with the battery at its floor,
+  almost every day (owner, 2026-11-01).
 - **Prepared for the charge task**: the work mode and the result of a command (`setSelfUse`, `requestStatus`) - no
   write is sent by this service yet; the fields of the body are the charge task's to verify.
 

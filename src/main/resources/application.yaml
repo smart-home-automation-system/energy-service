@@ -85,6 +85,8 @@ energy:
       interval: PT5M
       alarm-interval: PT15M
       stale-after: PT15M
+      # error codes the household is not told of: 17 Bat Power Low - the battery at its floor, almost every day
+      ignored-alarm-codes: "17"
   # the outages of the grid as the SOLAX sees them (HAS-334): one more alert by SMS when the battery falls below
   # low-soc % during an outage, a reminder every reminder-every while it lasts
   outage:
