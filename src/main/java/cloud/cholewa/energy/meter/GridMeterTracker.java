@@ -42,6 +42,11 @@ public class GridMeterTracker {
         return LocalDateTime.now(clock).truncatedTo(ChronoUnit.MICROS);
     }
 
+    //whether the last read of the readings over RPC answered (HAS-332)
+    void rpcReachable(final boolean reachable) {
+        state.updateAndGet(current -> current.withRpcReachable(reachable));
+    }
+
     //the last will (false) and the return (true) of the meter on the broker; logged when it changes - it is
     //rare, and it is what tells a silent meter from a quiet broker
     void online(final boolean online) {

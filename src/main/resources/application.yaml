@@ -79,6 +79,17 @@ energy:
   outage:
     low-soc: 20
     reminder-every: PT1H
+  # the silence of the sources (HAS-332): the dongle of the SOLAX not answering and the grid meter silent on MQTT and
+  # RPC for this long is an alert, a reminder every reminder-every while it lasts, an info on its return
+  availability:
+    solax-silent-after: PT5M
+    meter-silent-after: PT5M
+    reminder-every: PT1H
+  # the overload of a phase of the grid meter (HAS-332): above phase-current-warn A for overload-after is a warning,
+  # below for as long ends it with an info (the main fuses are 3 x 25 A, the board of the inverter 20 A a phase)
+  grid:
+    phase-current-warn: 22
+    overload-after: PT3M
 
 # the notifications of the outages (HAS-334): the exchange is on the same broker as spring.rabbitmq.*, on its own
 # virtual host - a second connection (NotificationRabbitConfig); env is one of the two headers it routes by.

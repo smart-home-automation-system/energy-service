@@ -15,7 +15,8 @@ import java.time.Duration;
 //is not known until a message or this read, and after a gap of the broker its values replace the old MQTT state.
 //The calls have the timeouts of shelly-client (shelly.client.*, 3 s to connect, 5 s of silence); the whole pass is
 //bounded below the five minutes between passes. A failed read changes nothing: the meter is on the broker or not,
-//MQTT says which
+//MQTT says which. Whether EM.GetStatus answered is kept (HAS-332): the monitor of the sources calls the meter silent
+//only when it does not answer over RPC either
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -36,8 +37,12 @@ public class MeterReconciliation {
     private Mono<Void> readings() {
         return shellyRpcClient.emStatus(meterProperties.address(), CHANNEL)
             .doOnNext(gridMeterTracker::readings)
+            .doOnNext(readings -> gridMeterTracker.rpcReachable(true))
             .then()
-            .onErrorResume(failure -> failed("readings", failure));
+            .onErrorResume(failure -> {
+                gridMeterTracker.rpcReachable(false);
+                return failed("readings", failure);
+            });
     }
 
     private Mono<Void> counters() {

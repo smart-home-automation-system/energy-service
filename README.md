@@ -43,7 +43,9 @@ planned outage of Tauron.
   public library) is established on answers compared with SolaxCloud by night and by day;
 - **the outages of the grid** as the SOLAX sees them (HAS-334): the loss, the hourly reminders, a low battery and
   the return told on Discord - the loss, the low battery and the return also by SMS to the administrators of the
-  household - stored in `grid_outage`, `GET /home/energy/outages` and the grid in `/status`.
+  household - stored in `grid_outage`, `GET /home/energy/outages` and the grid in `/status`;
+- **the sources watched** (HAS-332): the SOLAX dongle and the grid meter silent, a phase of the meter overloaded -
+  told on Discord, stored in `source_alert`.
 
 **The outages of the grid** - only the inverter knows the grid: the Pro 3EM goes dark with an empty battery, and the
 cluster runs in the house.
@@ -66,6 +68,22 @@ cluster runs in the house.
   not known while the SOLAX is stale (a stored outage stays `lost`); a restart while the database cannot be read
   decides nothing until it can.
 
+**The sources watched** (HAS-332) - the pattern of blinds and light, judged every minute by whole passes:
+
+- **Silent**: the SOLAX dongle when its reader failed and it answered nothing for `energy.availability.solax-silent-after`
+  (PT5M); the grid meter when its last read over RPC failed and no message nor read came for
+  `energy.availability.meter-silent-after` (PT5M) - the broker alone going down is no silence of the meter, the
+  reconciliation still reads it every 5 min. A source never heard since the start counts from the start. One alert a pass
+  naming every silent source, a reminder every `energy.availability.reminder-every` (PT1H), an info at its return - only
+  once it answers again (HAS-296). An alert that did not get through is tried again with every pass; the return names
+  one that never did. The SolaX cloud read is not the dongle; the SOFAR joins with HAS-330.
+- **Overload**: a phase current of the grid meter above `energy.grid.phase-current-warn` (22 A; the main fuses are
+  3 x 25 A, the board of the inverter 20 A a phase) in every pass for `energy.grid.overload-after` (PT3M) is a
+  warning (the level `warn`) naming the phase and the current, once an episode; below for as long, an info ends it.
+  Only a reading of the meter not older than `energy.meter.stale-after` counts - a stale one starts the count anew.
+- The episodes are kept in `source_alert` (open and closed), so a restart neither repeats an alert nor forgets a
+  return; the alert does not wait for the database - a row it does not take is stored with a later pass.
+
 The SOFAR and the SolaX cloud are not known yet. What comes next:
 
 | Task | What |
@@ -73,7 +91,6 @@ The SOFAR and the SolaX cloud are not known yet. What comes next:
 | HAS-329 | the SolaX Developer Platform |
 | HAS-330 | the SOFAR inverter |
 | HAS-331 | the balance of the grid and its history |
-| HAS-332 | the availability of the sources and the phase overload warning |
 
 # Run locally
 
@@ -103,6 +120,10 @@ The SOFAR and the SolaX cloud are not known yet. What comes next:
   `notification` (`notification-rabbitmq-password`, mandatory), the exchange `notification` with `env` `prod`
   (`dev` under `local`). `energy.outage.low-soc` (20 %, 11 - 99) and `energy.outage.reminder-every` (PT1H,
   10 min - 24 h).
+- **The sources watched** (HAS-332): `energy.availability.solax-silent-after` and `meter-silent-after` (PT5M, 1 min -
+  24 h), `energy.availability.reminder-every` (PT1H, 10 min - 24 h), `energy.grid.phase-current-warn` (22 A, 1 - 63) and
+  `energy.grid.overload-after` (PT3M, 1 - 60 min). To try the overload warning locally, lower the threshold below the
+  current of the house (`--energy.grid.phase-current-warn=1`).
 
 # API
 
@@ -133,3 +154,7 @@ services needs `GRANT USAGE, CREATE ON SCHEMA public` before the first start, or
 - `V4` (HAS-334) `grid_outage`: one row an outage of the grid - its start and end (`ended_at` NULL while it
   lasts, at most one such row: a partial unique index), the state of charge at the start, at the end and the lowest,
   the last notification and the alert of a low battery (so that a restart neither repeats nor forgets them).
+- `V5` (HAS-332) `source_alert`: one row an episode of a source - `source` (`solax`, `meter`, `phase a` / `b` / `c`),
+  `kind` (`silent` for the first two, `overload` for the phases - checked), since when, the last notification (NULL while
+  the alert has not got through) and the end (`closed_at` NULL while it lasts, at most one such row a source: a partial
+  unique index).
