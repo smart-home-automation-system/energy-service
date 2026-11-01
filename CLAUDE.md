@@ -9,7 +9,8 @@ repository map and working rules come from the workspace-level context
 (`organization-repository/claude/organization.md`). The user writes the code in this
 repository themselves; Claude's default role here is analysis, code review and security
 review - the owner had Claude implement the scaffold (HAS-325), the grid meter (HAS-327), the
-SOLAX (HAS-328) and the outages of the grid (HAS-334), and reviews them in IntelliJ.
+SOLAX (HAS-328), the outages of the grid (HAS-334) and the monitor of the sources (HAS-332), and reviews them in
+IntelliJ.
 
 ## Role in the system
 
@@ -23,7 +24,8 @@ SOLAX (HAS-328) and the outages of the grid (HAS-334), and reviews them in Intel
   (HAS-329), the SOFAR (HAS-330).
 - Publishes: the alerts, reminders and infos of the outages of the grid to the exchange `notification` of
   `/notification` (user `notification`, `notification-rabbitmq-password`; HAS-334) - the loss, a low battery and
-  the return marked for an SMS.
+  the return marked for an SMS; the silence of the SOLAX dongle and the grid meter and the overload of a phase
+  (HAS-332), Discord only.
 - Uses libraries: `cholewa-commons` 1.13.0 (the pooled `ConnectionFactory`, the required
   properties, the scheduler pool and `ScheduledPass`, the error contract, `NotificationConnection` and the
   `...Sms` methods of `NotificationPublisher` - HAS-334), `smart-home-sdk` 1.15.0 (the kind
@@ -65,7 +67,7 @@ SOLAX (HAS-328) and the outages of the grid (HAS-334), and reviews them in Intel
   `@Scheduled` method is wrapped in `ScheduledPass.bounded`, its limit below its delay and pinned by a
   test that hangs the pass (the reconciliation 1 min, the snapshot 50 s); the scheduler has the pool of
   10 of the library.
-  The outage watch: every 15 s, bounded at 14 s.
+  The outage watch: every 15 s, bounded at 14 s. The monitor of the sources: every minute, bounded at 50 s.
 - **The broker**: one connection, the auto-configured one, to `/device` (user `device`, `rabbitmq-password`),
   the listener with manual ack, prefetch 3 and observation (`EnergyServiceApplicationTest`). The notifications
   go over a second connection that is **not a bean** (`NotificationConnection` of `cholewa-commons`, built by
@@ -160,6 +162,32 @@ SOLAX (HAS-328) and the outages of the grid (HAS-334), and reviews them in Intel
     with `USAGE, CREATE` on `public` only), the new jar V4; a second open row refused by the index; a restart with
     an open row logged "still open", answered `grid: lost` and the row in `/outages`, the due reminder failing on
     the missing broker without stopping the pass.
+- **The monitor of the sources** (HAS-332, package `monitor`) - what is easy to break:
+  - **Silence is judged by whole passes and kind of call, never by time alone** (HAS-109): the SOLAX is out only while
+    its reader fails (`reachable: false`) and nothing came for `solax-silent-after`; the meter only while its last
+    `EM.GetStatus` failed (`GridMeterState.rpcReachable`, set by `MeterReconciliation` - **the readings call, not the
+    counters**) and nothing came on MQTT nor RPC for `meter-silent-after`. The broker down alone is no silence: the
+    reconciliation reads the meter every 5 min - which also means a silent meter is seen 5 to 10 min late.
+  - A source never heard since the start counts from the start (`startedAt` of the monitor); one only not known
+    (`reachable` / `rpcReachable` null) is neither out nor back. **Back** is a reading after the episode opened - an
+    episode opens at the time the source was last heard (HAS-296: never "back" on a restart only).
+  - `SourceRules` decides without I/O (`SourceRulesTest`): one alert a pass naming every silent source, a reminder every
+    `reminder-every` from the last notice, returns first; the overload per phase - above in **every** pass for
+    `overload-after` (a pass below or a stale reading counts anew), one warning an episode (`publishReminder`, level
+    `warn`), below for as long an info; the episode ends at the first pass below. **The opening is held at once, what a
+    notice changes (told, closed) only once it was published** - so an alert that failed is tried again with every pass,
+    and the return of one that never got through says so (`last_told_at` NULL).
+  - `SourceMonitor` runs it **memory first** as `GridOutageWatch`: nothing before the open episodes were read
+    (`findByClosedAtIsNull`, tried again with every pass), then the decision held, the notices sent (each cut off after
+    6 s; six of them fit the bound), then every unsaved row stored - one the database does not take stays in
+    `SourceWatch.unsaved`, one an episode (the newest), and the open one takes its id once stored.
+  - `source_alert` (V5): `source` and `kind` checked together (silent: solax, meter; overload: phase a / b / c), at most one
+    open row a source (partial unique index `source_alert_one_open`). **A new source (the SOFAR, HAS-330) is a migration
+    of both checks** and a constant of `Source`; an open row of a source this version does not know is logged and left.
+  - **Rehearsed** (2026-11-01): the released 0.4.0 image applied V1-V4 on a throwaway PostgreSQL with SSL (a user with
+    `USAGE, CREATE` on `public` only), the new jar V5; with no meter and no broker (`meter-silent-after` 1 min) the
+    meter episode was stored with `last_told_at` NULL and the alert tried every minute; a second open row and
+    `phase a` / `silent` refused; a restart logged "still open" and kept the row.
 - **The map of type 33** (`Type33`, pinned by `Type33Test` on `src/test/resources/solax/*.json` - answers of
   2026-10-23 19:52, 2026-10-27 20:49, 2026-10-28 10:27 and 2026-10-29 19:09 with invented dongle and inverter serials;
   the last three compared with SolaxCloud (the last one with the Pro 3EM as well), Developer Platform `v2/device/realtime_data` and `v2/plant/realtime_data`, within one

@@ -36,6 +36,7 @@ class MeterReconciliationTest {
 
         assertThat(tracker.current().readings().getTotalActPower()).isEqualTo(-113.5);
         assertThat(tracker.current().counters().getTotalAct()).isEqualTo(891011.75);
+        assertThat(tracker.current().rpcReachable()).isTrue();
         verify(rpcClient).emStatus(ADDRESS, 0);
         verify(rpcClient).emDataStatus(ADDRESS, 0);
     }
@@ -64,6 +65,8 @@ class MeterReconciliationTest {
 
         assertThat(tracker.current().readings()).isNull();
         assertThat(tracker.current().counters()).isNotNull();
+        //HAS-332: the readings call is what tells the monitor of the sources the meter answers over RPC
+        assertThat(tracker.current().rpcReachable()).isFalse();
     }
 
     @Test

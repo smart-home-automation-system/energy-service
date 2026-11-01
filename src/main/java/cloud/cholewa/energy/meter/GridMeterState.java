@@ -8,27 +8,34 @@ import java.time.LocalDateTime;
 //What the service holds of the grid meter, in memory: the last readings (em:0) and counters (emdata:0) with the
 //house time they arrived at, and whether the meter is on the broker. Everything is null until it was heard of -
 //after a start the meter is not known until the first message or the first read of the reconciliation.
-//online - the "online" topic of the meter: false is its last will, true its return; a reading counts as true
+//online - the "online" topic of the meter: false is its last will, true its return; a reading counts as true.
+//rpcReachable - whether the last read of EM.GetStatus by the reconciliation answered (HAS-332): with no message on
+//the broker either, the meter is silent
 public record GridMeterState(
     EmStatus readings,
     LocalDateTime readingsAt,
     EmDataStatus counters,
     LocalDateTime countersAt,
-    Boolean online
+    Boolean online,
+    Boolean rpcReachable
 ) {
 
-    static final GridMeterState UNKNOWN = new GridMeterState(null, null, null, null, null);
+    static final GridMeterState UNKNOWN = new GridMeterState(null, null, null, null, null, null);
 
     GridMeterState withReadings(final EmStatus status, final LocalDateTime at) {
-        return new GridMeterState(status, at, counters, countersAt, true);
+        return new GridMeterState(status, at, counters, countersAt, true, rpcReachable);
     }
 
     GridMeterState withCounters(final EmDataStatus status, final LocalDateTime at) {
-        return new GridMeterState(readings, readingsAt, status, at, true);
+        return new GridMeterState(readings, readingsAt, status, at, true, rpcReachable);
     }
 
     GridMeterState withOnline(final boolean value) {
-        return new GridMeterState(readings, readingsAt, counters, countersAt, value);
+        return new GridMeterState(readings, readingsAt, counters, countersAt, value, rpcReachable);
+    }
+
+    GridMeterState withRpcReachable(final boolean value) {
+        return new GridMeterState(readings, readingsAt, counters, countersAt, online, value);
     }
 
     //the newer of the two arrivals, or null when neither came yet

@@ -2,6 +2,8 @@ package cloud.cholewa.energy;
 
 import cloud.cholewa.commons.database.DatabaseProperties;
 import cloud.cholewa.energy.meter.MeterProperties;
+import cloud.cholewa.energy.monitor.AvailabilityProperties;
+import cloud.cholewa.energy.monitor.OverloadProperties;
 import cloud.cholewa.energy.solax.SolaxProperties;
 import cloud.cholewa.shelly.http.ShellyGen1Client;
 import cloud.cholewa.shelly.http.ShellyRpcClient;
@@ -29,6 +31,10 @@ class EnergyServiceApplicationTest {
     private MeterProperties meterProperties;
     @Autowired
     private SolaxProperties solaxProperties;
+    @Autowired
+    private AvailabilityProperties availabilityProperties;
+    @Autowired
+    private OverloadProperties overloadProperties;
 
     @Test
     void contextLoads() {
@@ -91,6 +97,17 @@ class EnergyServiceApplicationTest {
         assertThat(solaxProperties.interval()).isEqualTo(Duration.ofSeconds(15));
         assertThat(solaxProperties.staleAfter()).isEqualTo(Duration.ofMinutes(1));
         assertThat(solaxProperties.batteryCapacity()).isEqualTo(26.5);
+    }
+
+    //HAS-332: a source silent for five minutes is an alert, reminded hourly; a phase above 22 A for three minutes warns
+    //(the main fuses are 3 x 25 A) - a duration lost or mistyped would bind as milliseconds
+    @Test
+    void should_watch_the_sources_and_the_phases_as_agreed() {
+        assertThat(availabilityProperties.solaxSilentAfter()).isEqualTo(Duration.ofMinutes(5));
+        assertThat(availabilityProperties.meterSilentAfter()).isEqualTo(Duration.ofMinutes(5));
+        assertThat(availabilityProperties.reminderEvery()).isEqualTo(Duration.ofHours(1));
+        assertThat(overloadProperties.phaseCurrentWarn()).isEqualTo(22.0);
+        assertThat(overloadProperties.overloadAfter()).isEqualTo(Duration.ofMinutes(3));
     }
 
     private String[] required(final int index) {
