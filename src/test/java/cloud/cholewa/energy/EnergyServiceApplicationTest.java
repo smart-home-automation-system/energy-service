@@ -55,15 +55,16 @@ class EnergyServiceApplicationTest {
     }
 
     //what has no default in a document a pod runs with - the passwords of the database and the broker, the id and
-    //the address of the grid meter (private, from the manifest): the start is refused without any of them
-    //(cholewa.required-properties)
+    //the address of the grid meter (private, from the manifest), the password of the notifications (HAS-334): the start
+    //is refused without any of them (cholewa.required-properties)
     @Test
     void should_require_what_has_no_default() {
         assertThat(required(0)).containsExactly("database.password", "database-password");
         assertThat(required(1)).containsExactly("spring.rabbitmq.password", "rabbitmq-password");
-        assertThat(required(2)).containsExactly("energy.meter.device-id", "meter-device-id");
-        assertThat(required(3)).containsExactly("energy.meter.address", "meter-address");
-        assertThat(applicationContext.getEnvironment().getProperty("cholewa.required-properties[4].property")).isNull();
+        assertThat(required(2)).containsExactly("notification.password", "notification-rabbitmq-password");
+        assertThat(required(3)).containsExactly("energy.meter.device-id", "meter-device-id");
+        assertThat(required(4)).containsExactly("energy.meter.address", "meter-address");
+        assertThat(applicationContext.getEnvironment().getProperty("cholewa.required-properties[5].property")).isNull();
     }
 
     //the listener returns a Mono: with the default ack mode the container acks before the message is handled

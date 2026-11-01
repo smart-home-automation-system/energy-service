@@ -15,7 +15,10 @@ public enum EnergyError implements ErrorId {
     NOT_FOUND_INVERTER("Inverter not found"),
 
     //the inverters of the registry are not known yet - database-service did not answer since the start
-    REGISTRY_UNAVAILABLE("Device registry unavailable");
+    REGISTRY_UNAVAILABLE("Device registry unavailable"),
+
+    //a range of the history that is empty, reversed or too long (HAS-334: the outages, at most 366 days)
+    INVALID_RANGE("Invalid range");
 
     private final String description;
 }

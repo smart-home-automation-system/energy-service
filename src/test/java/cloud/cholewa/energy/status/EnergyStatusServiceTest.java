@@ -3,6 +3,7 @@ package cloud.cholewa.energy.status;
 import cloud.cholewa.energy.api.model.SourceStatusReply;
 import cloud.cholewa.energy.meter.GridMeterTracker;
 import cloud.cholewa.energy.meter.GridMeterState;
+import cloud.cholewa.energy.outage.GridOutageService;
 import cloud.cholewa.energy.solax.SolaxSamples;
 import cloud.cholewa.energy.solax.SolaxState;
 import cloud.cholewa.energy.solax.SolaxTracker;
@@ -22,7 +23,8 @@ class EnergyStatusServiceTest {
 
     private final GridMeterTracker tracker = mock(GridMeterTracker.class);
     private final SolaxTracker solaxTracker = mock(SolaxTracker.class);
-    private final EnergyStatusService energyStatusService = new EnergyStatusService(tracker, solaxTracker);
+    private final EnergyStatusService energyStatusService = new EnergyStatusService(tracker, solaxTracker,
+        mock(GridOutageService.class));
 
     @BeforeEach
     void setUp() {

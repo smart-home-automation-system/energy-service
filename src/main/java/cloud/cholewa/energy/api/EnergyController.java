@@ -3,17 +3,22 @@ package cloud.cholewa.energy.api;
 import cloud.cholewa.energy.api.model.BatteryReply;
 import cloud.cholewa.energy.api.model.GridReply;
 import cloud.cholewa.energy.api.model.InverterReply;
-import cloud.cholewa.energy.api.model.SourceStatusReply;
+import cloud.cholewa.energy.api.model.OutageReply;
+import cloud.cholewa.energy.api.model.StatusReply;
 import cloud.cholewa.energy.inverter.BatteryService;
 import cloud.cholewa.energy.inverter.InverterService;
 import cloud.cholewa.energy.meter.GridService;
+import cloud.cholewa.energy.outage.GridOutageService;
 import cloud.cholewa.energy.status.EnergyStatusService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 //The API of the energy of the house, under the base path /home/energy; routed by the gateway by path, every
@@ -26,11 +31,13 @@ public class EnergyController {
     private final GridService gridService;
     private final InverterService inverterService;
     private final BatteryService batteryService;
+    private final GridOutageService gridOutageService;
 
-    //every source of energy with whether it answers - the contract of the availability card of the dashboard
+    //every source of energy with whether it answers - the contract of the availability card of the dashboard - and
+    //the grid as the SOLAX sees it (HAS-334)
     @GetMapping("status")
-    Mono<List<SourceStatusReply>> status() {
-        return energyStatusService.status();
+    Mono<StatusReply> status() {
+        return energyStatusService.reply();
     }
 
     //the grid meter now (HAS-327)
@@ -49,6 +56,15 @@ public class EnergyController {
     @GetMapping("inverters/{id}")
     Mono<InverterReply> inverter(@PathVariable final String id) {
         return inverterService.inverter(id);
+    }
+
+    //the outages of the grid that started in [from, to), house times, at most 366 days (HAS-334)
+    @GetMapping("outages")
+    Mono<List<OutageReply>> outages(
+        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) final LocalDateTime from,
+        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) final LocalDateTime to
+    ) {
+        return gridOutageService.outages(from, to);
     }
 
     //the battery of the SOLAX now (HAS-328)

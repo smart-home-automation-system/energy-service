@@ -15,13 +15,15 @@ import java.math.BigDecimal;
 //the house takes from the grid (served the other way round), [36] battery voltage ÷10, [37] battery current ÷10 signed, [38] battery
 //power W signed, [42] inverter temperature, [89] battery SOH %, [101] / [102] discharged / charged today ÷10,
 //[103-104] total yield ÷10 (low word first), [105] daily yield ÷10, [125] SOC %, [127] battery temperature signed,
-//[138] battery cycles. Information[2] is the serial number of the inverter. A value of Data not listed is never read.
+//[138] battery cycles, [167-169] voltage per phase at the grid connection point ÷10 (HAS-334). Information[2] is the
+//serial number of the inverter. A value of Data not listed is never read.
 //The dongle answers text/html, so the body is parsed here. A refused registration number is a body that is not JSON
 //(0:code,message:"failed"}), an empty one the answer to a request without it
 final class Type33 {
 
     static final int TYPE = 33;
     private static final int LAST_INDEX = 138;
+    private static final int GRID_POINT = 167;
     private static final int SERIAL = 2;
 
     private Type33() {
@@ -82,7 +84,16 @@ final class Type33 {
                 (double) data.signed(127),
                 data.unsigned(138),
                 data.scaled(102, 1),
-                data.scaled(101, 1)));
+                data.scaled(101, 1)),
+            gridPoint(data));
+    }
+
+    //an answer too short for the grid connection point reads the rest all the same - the grid is then not known
+    private static SolaxReading.GridPoint gridPoint(final Words data) {
+        return data.data().size() > GRID_POINT + 2
+            ? new SolaxReading.GridPoint(data.scaled(GRID_POINT, 1), data.scaled(GRID_POINT + 1, 1),
+                data.scaled(GRID_POINT + 2, 1))
+            : null;
     }
 
     private static SolaxReading.Phase phase(final Words data, final int phase) {

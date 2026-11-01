@@ -1,6 +1,8 @@
 package cloud.cholewa.energy.solax;
 
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 
 import static cloud.cholewa.energy.solax.SolaxSamples.DAY;
 import static cloud.cholewa.energy.solax.SolaxSamples.EARLIER_EVENING;
@@ -38,6 +40,31 @@ class Type33Test {
         assertThat(reading.temperature()).isEqualTo(48.0);
         assertThat(reading.dailyYield()).isEqualTo(38.6);
         assertThat(reading.totalYield()).isEqualTo(4510.6);
+    }
+
+    //HAS-334: the voltage at the grid connection point, Data[167-169] ÷10 - the grid itself, what the outage watch reads
+    @Test
+    void should_read_the_voltage_at_the_grid_connection_point() {
+        assertThat(reading(EVENING).gridPoint()).isEqualTo(new SolaxReading.GridPoint(235.6, 234.7, 234.5));
+        assertThat(reading(SolaxSamples.GRID_IMPORT).gridPoint())
+            .isEqualTo(new SolaxReading.GridPoint(233.4, 232.6, 234.1));
+    }
+
+    //an answer too short for the grid connection point is read all the same - the grid is then not known
+    @Test
+    void should_read_an_answer_without_the_grid_connection_point() {
+        //the first 150 words of Data kept
+        final ObjectNode answer = (ObjectNode) SolaxSamples.JSON.readTree(SolaxSamples.sample(EVENING));
+        final ArrayNode data = (ArrayNode) answer.get("Data");
+        while (data.size() > 150) {
+            data.remove(data.size() - 1);
+        }
+        final String body = SolaxSamples.JSON.writeValueAsString(answer);
+
+        final SolaxReading reading = Type33.parse(body, SolaxSamples.JSON);
+
+        assertThat(reading.gridPoint()).isNull();
+        assertThat(reading.battery().soc()).isEqualTo(64.0);
     }
 
     //the power and the current are signed 16-bit words: 63556 is -1980 W, 65150 is -38.6 A

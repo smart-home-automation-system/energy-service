@@ -20,8 +20,14 @@ public record SolaxReading(
     Pv pv1,
     Pv pv2,
     Double gridPower,
-    Battery battery
+    Battery battery,
+    GridPoint gridPoint
 ) {
+
+    //the voltage of each phase at the grid connection point, V (Data[167-169]) - the grid itself, not what the
+    //inverter gives: 0 when the grid is lost, also while the house runs in EPS (HAS-334)
+    public record GridPoint(Double a, Double b, Double c) {
+    }
 
     //one phase of the AC side: voltage, current and power
     public record Phase(Double voltage, Double current, Double power) {
