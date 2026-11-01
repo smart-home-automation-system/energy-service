@@ -6,6 +6,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 //What the monitor of the sources decides (HAS-332), without I/O - pinned by SourceRulesTest.
 //Silence, the pattern of blinds and light: a source out for its bound opens an episode at the time it was last heard
@@ -92,7 +93,7 @@ final class SourceRules {
         final boolean above = current > overload.phaseCurrentWarn();
         final SourceAlertEntity open = held.open().get(phase);
         if (open == null) {
-            final LocalDateTime since = held.aboveSince().getOrDefault(phase, now);
+            final LocalDateTime since = Optional.ofNullable(held.aboveSince().get(phase)).orElse(now);
             final SourceWatch counted = held.withBelow(phase, null).withAbove(phase, above ? since : null);
             if (!above || since.plus(overload.overloadAfter()).isAfter(now)) {
                 return new Phase(counted, List.of());
@@ -106,7 +107,7 @@ final class SourceRules {
             return new Phase(counted, open.lastToldAt() == null
                 ? List.of(overloaded(phase, open, current, now, overload)) : List.of());
         }
-        final LocalDateTime since = held.belowSince().getOrDefault(phase, now);
+        final LocalDateTime since = Optional.ofNullable(held.belowSince().get(phase)).orElse(now);
         final SourceWatch counted = held.withBelow(phase, since);
         if (since.plus(overload.overloadAfter()).isAfter(now)) {
             return new Phase(counted, List.of());
