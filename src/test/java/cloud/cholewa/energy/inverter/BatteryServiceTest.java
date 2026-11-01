@@ -6,12 +6,19 @@ import cloud.cholewa.energy.solax.SolaxProperties;
 import cloud.cholewa.energy.solax.SolaxReading;
 import cloud.cholewa.energy.solax.SolaxSamples;
 import cloud.cholewa.energy.solax.SolaxState;
+import cloud.cholewa.energy.registry.InverterRegistry;
 import cloud.cholewa.energy.solax.SolaxTracker;
+import cloud.cholewa.energy.solaxcloud.CloudSamples;
+import cloud.cholewa.energy.solaxcloud.SolaxCloudState;
+import cloud.cholewa.energy.solaxcloud.SolaxCloudTracker;
+import cloud.cholewa.home.model.InverterBrand;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import reactor.test.StepVerifier;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Optional;
 
 import static cloud.cholewa.energy.solax.SolaxSamples.EVENING;
 import static cloud.cholewa.energy.solax.SolaxSamples.ID;
@@ -26,8 +33,17 @@ class BatteryServiceTest {
     private static final LocalDateTime NOW = LocalDateTime.of(2026, 10, 27, 20, 49, 10);
 
     private final SolaxTracker tracker = mock(SolaxTracker.class);
+    private final SolaxCloudTracker cloudTracker = mock(SolaxCloudTracker.class);
+    private final InverterRegistry registry = mock(InverterRegistry.class);
     private final BatteryService service = new BatteryService(tracker,
-        new SolaxProperties(Duration.ofSeconds(15), Duration.ofMinutes(1), 26.5), new SolaxSamples.MovableClock());
+        new SolaxProperties(Duration.ofSeconds(15), Duration.ofMinutes(1), 26.5), cloudTracker,
+        CloudSamples.PROPERTIES, registry, new SolaxSamples.MovableClock());
+
+    @BeforeEach
+    void setUp() {
+        when(cloudTracker.current()).thenReturn(new SolaxCloudState(null, null, null, null));
+        when(registry.of(InverterBrand.SOLAX)).thenReturn(Optional.of(SolaxSamples.solax("192.0.2.158")));
+    }
 
     //SolaxCloud at the same time: SOC 64 %, 16.9 kWh left of its own estimate
     @Test
@@ -36,14 +52,14 @@ class BatteryServiceTest {
 
         service.battery().as(StepVerifier::create)
             .expectNext(new BatteryReply(64.0, 99.0, -1980.0, BatteryDirection.DISCHARGING, 52.3, -38.6, 20.0, 132,
-                16.96, 26.6, 10.2, READ_AT, false))
+                16.96, 26.6, 10.2, READ_AT, false, "local"))
             .verifyComplete();
     }
 
     @Test
     void should_answer_only_stale_before_the_first_reading() {
         assertThat(service.replyOf(new SolaxState(null, null, null, null), NOW)).isEqualTo(
-            new BatteryReply(null, null, null, null, null, null, null, null, null, null, null, null, true));
+            new BatteryReply(null, null, null, null, null, null, null, null, null, null, null, null, true, null));
     }
 
     @Test
@@ -72,5 +88,33 @@ class BatteryServiceTest {
                 battery.temperature(), battery.cycles(), battery.chargedToday(), battery.dischargedToday()),
             evening.gridPoint());
         return service.replyOf(new SolaxState(ID, withPower, READ_AT, true), NOW).direction();
+    }
+
+    //HAS-329: the dongle stale, the battery of the SOLAX in the cloud fresh - its answer with source cloud; charged and
+    //discharged today are not read from the cloud
+    @Test
+    void should_answer_the_cloud_while_the_dongle_is_stale() {
+        when(cloudTracker.current()).thenReturn(new SolaxCloudState(null,
+            CloudSamples.batteryAt("2026-10-27 20:45:00"), NOW, true));
+
+        assertThat(service.replyOf(new SolaxState(ID, reading(EVENING), READ_AT.minusMinutes(10), false), NOW))
+            .isEqualTo(new BatteryReply(9.0, 99.0, 146.0, BatteryDirection.CHARGING, 51.8, 3.1, 19.0, 134, 2.39, null,
+                null, LocalDateTime.of(2026, 10, 27, 20, 45), false, "cloud"));
+        //a cloud answer older than the stale reading of the dongle never replaces it
+        assertThat(service.replyOf(new SolaxState(ID, reading(EVENING), READ_AT, false), NOW).source())
+            .isEqualTo("local");
+    }
+
+    @Test
+    void should_never_answer_the_cloud_while_the_dongle_is_fresh_or_the_cloud_old() {
+        when(cloudTracker.current()).thenReturn(new SolaxCloudState(null,
+            CloudSamples.batteryAt("2026-10-27 20:45:00"), NOW, true));
+        assertThat(service.replyOf(new SolaxState(ID, reading(EVENING), READ_AT, true), NOW).source())
+            .isEqualTo("local");
+
+        when(cloudTracker.current()).thenReturn(new SolaxCloudState(null,
+            CloudSamples.batteryAt("2026-10-27 20:30:00"), NOW, true));
+        assertThat(service.replyOf(new SolaxState(ID, reading(EVENING), READ_AT, false), NOW).source())
+            .isEqualTo("local");
     }
 }

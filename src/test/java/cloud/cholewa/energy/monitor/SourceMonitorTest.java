@@ -48,11 +48,11 @@ class SourceMonitorTest {
         monitor = new SourceMonitor(solaxTracker, meterTracker, repository, publisher, SourceRulesTest.AVAILABILITY,
             SourceRulesTest.OVERLOAD, new MeterProperties("shellypro3em-000000000000", "localhost:1",
             Duration.ofMinutes(2)), clock);
-        when(repository.findByClosedAtIsNull()).thenReturn(Flux.empty());
+        when(repository.findByClosedAtIsNullAndKindIn(SourceMonitor.KINDS)).thenReturn(Flux.empty());
         when(repository.save(any())).thenAnswer(call -> {
             final SourceAlertEntity row = call.getArgument(0);
             return Mono.just(row.id() != null ? row : new SourceAlertEntity(ids.getAndIncrement(), row.source(),
-                row.kind(), row.openedAt(), row.lastToldAt(), row.closedAt()));
+                row.kind(), row.openedAt(), row.lastToldAt(), row.closedAt(), null));
         });
         when(publisher.publishAlert(anyString())).thenReturn(Mono.empty());
         when(publisher.publishReminder(anyString())).thenReturn(Mono.empty());
@@ -162,7 +162,7 @@ class SourceMonitorTest {
         when(repository.save(any())).thenAnswer(call -> {
             final SourceAlertEntity row = call.getArgument(0);
             return Mono.just(new SourceAlertEntity(9L, row.source(), row.kind(), row.openedAt(), row.lastToldAt(),
-                row.closedAt()));
+                row.closedAt(), null));
         });
 
         pass();
@@ -175,8 +175,8 @@ class SourceMonitorTest {
     //the episode open before a restart is held: its return is told, the alert never repeated
     @Test
     void should_hold_an_episode_read_after_a_start() {
-        when(repository.findByClosedAtIsNull()).thenReturn(Flux.just(new SourceAlertEntity(3L, "solax", "silent",
-            now().minusMinutes(20), now().minusMinutes(14), null)));
+        when(repository.findByClosedAtIsNullAndKindIn(SourceMonitor.KINDS)).thenReturn(Flux.just(new SourceAlertEntity(3L, "solax", "silent",
+            now().minusMinutes(20), now().minusMinutes(14), null, null)));
         solax(false, now().minusMinutes(20));
         pass();
         solax(true, now());
@@ -185,13 +185,13 @@ class SourceMonitorTest {
         verify(publisher, never()).publishAlert(anyString());
         verify(publisher).publishInfo(startsWith("Available again: the SOLAX dongle"));
         verify(repository).save(new SourceAlertEntity(3L, "solax", "silent", now().minusMinutes(22),
-            now().minusMinutes(16), now().minusMinutes(1)));
+            now().minusMinutes(16), now().minusMinutes(1), null));
     }
 
     //nothing is decided before the open episodes were read
     @Test
     void should_decide_nothing_before_the_open_episodes_were_read() {
-        when(repository.findByClosedAtIsNull()).thenReturn(Flux.error(new IllegalStateException("database down")));
+        when(repository.findByClosedAtIsNullAndKindIn(SourceMonitor.KINDS)).thenReturn(Flux.error(new IllegalStateException("database down")));
         solax(false, now().minusMinutes(30));
 
         pass();

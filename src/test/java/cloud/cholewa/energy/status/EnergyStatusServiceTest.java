@@ -7,6 +7,8 @@ import cloud.cholewa.energy.outage.GridOutageService;
 import cloud.cholewa.energy.solax.SolaxSamples;
 import cloud.cholewa.energy.solax.SolaxState;
 import cloud.cholewa.energy.solax.SolaxTracker;
+import cloud.cholewa.energy.solaxcloud.SolaxCloudState;
+import cloud.cholewa.energy.solaxcloud.SolaxCloudTracker;
 import cloud.cholewa.shelly.model.EmDataStatus;
 import cloud.cholewa.shelly.model.EmStatus;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,12 +25,14 @@ class EnergyStatusServiceTest {
 
     private final GridMeterTracker tracker = mock(GridMeterTracker.class);
     private final SolaxTracker solaxTracker = mock(SolaxTracker.class);
+    private final SolaxCloudTracker cloudTracker = mock(SolaxCloudTracker.class);
     private final EnergyStatusService energyStatusService = new EnergyStatusService(tracker, solaxTracker,
-        mock(GridOutageService.class));
+        cloudTracker, mock(GridOutageService.class));
 
     @BeforeEach
     void setUp() {
         when(solaxTracker.current()).thenReturn(new SolaxState(null, null, null, null));
+        when(cloudTracker.current()).thenReturn(new SolaxCloudState(null, null, null, null));
     }
 
     //after a start nothing is known: every source is there, in the order of the dashboard, and none is known
@@ -98,6 +102,19 @@ class EnergyStatusServiceTest {
             .as(StepVerifier::create)
             .expectNextMatches(sources -> sources.get(1)
                 .equals(new SourceStatusReply("solax", false, LocalDateTime.of(2026, 10, 27, 20, 49))))
+            .verifyComplete();
+    }
+
+    //HAS-329: the SolaX cloud is its last read
+    @Test
+    void should_answer_the_cloud_with_its_last_read() {
+        final LocalDateTime readAt = LocalDateTime.of(2026, 11, 1, 12, 53);
+        when(tracker.current()).thenReturn(new GridMeterState(null, null, null, null, null, null));
+        when(cloudTracker.current()).thenReturn(new SolaxCloudState(null, null, readAt, false));
+
+        energyStatusService.status().as(StepVerifier::create)
+            .assertNext(sources -> org.assertj.core.api.Assertions.assertThat(sources.get(3))
+                .isEqualTo(new SourceStatusReply("solaxCloud", false, readAt)))
             .verifyComplete();
     }
 }

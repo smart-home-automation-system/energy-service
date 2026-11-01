@@ -9,8 +9,8 @@ repository map and working rules come from the workspace-level context
 (`organization-repository/claude/organization.md`). The user writes the code in this
 repository themselves; Claude's default role here is analysis, code review and security
 review - the owner had Claude implement the scaffold (HAS-325), the grid meter (HAS-327), the
-SOLAX (HAS-328), the outages of the grid (HAS-334) and the monitor of the sources (HAS-332), and reviews them in
-IntelliJ.
+SOLAX (HAS-328), the outages of the grid (HAS-334), the monitor of the sources (HAS-332) and the SolaX cloud (HAS-329),
+and reviews them in IntelliJ.
 
 ## Role in the system
 
@@ -20,12 +20,12 @@ IntelliJ.
   meter is read (HAS-327).
 - Calls: the Shelly Pro 3EM over its RPC (`EM.GetStatus`, `EMData.GetStatus`, HAS-327); the dongle of the
   SOLAX over its local API and `database-service` for the inverters of the device registry
-  (`GET /home/device/registry?kind=inverter&enabled=true`, HAS-328). Planned: the SolaX Developer Platform
-  (HAS-329), the SOFAR (HAS-330).
+  (`GET /home/device/registry?kind=inverter&enabled=true`, HAS-328). The SolaX Developer Platform (HAS-329,
+  `openapi-eu.solaxcloud.com`). Planned: the SOFAR (HAS-330).
 - Publishes: the alerts, reminders and infos of the outages of the grid to the exchange `notification` of
   `/notification` (user `notification`, `notification-rabbitmq-password`; HAS-334) - the loss, a low battery and
   the return marked for an SMS; the silence of the SOLAX dongle and the grid meter and the overload of a phase
-  (HAS-332), Discord only.
+  (HAS-332), Discord only; the alarms of the SOLAX from the SolaX cloud (HAS-329).
 - Uses libraries: `cholewa-commons` 1.13.0 (the pooled `ConnectionFactory`, the required
   properties, the scheduler pool and `ScheduledPass`, the error contract, `NotificationConnection` and the
   `...Sms` methods of `NotificationPublisher` - HAS-334), `smart-home-sdk` 1.15.0 (the kind
@@ -188,6 +188,30 @@ IntelliJ.
     `USAGE, CREATE` on `public` only), the new jar V5; with no meter and no broker (`meter-silent-after` 1 min) the
     meter episode was stored with `last_told_at` NULL and the alert tried every minute; a second open row and
     `phase a` / `silent` refused; a restart logged "still open" and kept the row.
+- **The SolaX cloud** (HAS-329, package `solaxcloud`) - what is easy to break:
+  - **Every answer is HTTP 200 with a `code`**: 10000 success, 10400 bad credentials, 10402 an invalid token (the
+    message quotes the token back), 10500 "no permission" (a battery asked by its own serial). The token answer is
+    `{code, result: {access_token, expires_in}}` - judged by the token being there, not by the code. A failure is a
+    `SolaxCloudException` with the code alone - **never the body or the message of the cloud**.
+  - **Logbook**: `LogbookConfig.solaxCloudBodyFilter` replaces the body filter of Logbook (its bean steps back), so it
+    merges `BodyFilters.defaultValue()` (access_token, client_secret) with the mask of the quoted token; the
+    Authorization header is masked by the default header filter. A new bean of `BodyFilter` must keep the default.
+  - **The token** is held in an `AtomicReference`, taken anew a day before it expires and once after 10402 / HTTP 401
+    (a second refusal is a failure, not a loop); "bearer" with a lowercase b.
+  - **The battery is asked by the serial of the inverter** with `deviceType=2&requestSnType=1`; the answer's `deviceSn`
+    is the battery's, checked against `batterySerialNumber` of the registry before it is served.
+  - `SolaxCloudReader` (every interval, bounded at 50 s): the inverter, then its battery; a failure keeps the last
+    answers, one WARN an hour (`FailureLog`, public since). The services answer the cloud only while the dongle is stale
+    and the cloud answer fresh (`stale-after` by `plantLocalTime`); `gridPower` of the cloud has no established sign
+    and `deviceStatus` came back null - neither is read. The plant's `dailyYield` is the inverter's `dailyACOutput`, not
+    its `dailyYield` (2.5 against 4.0 kWh on 2026-11-01) - for HAS-331.
+  - `SolaxAlarmWatch` (every alarm interval, bounded at 1 min): the first page of the ongoing alarms (more is a WARN)
+    against the open `alarm` rows; **the table follows the broker** (light-service): a row only once its notice was
+    published. `SourceMonitor` reads only `silent` and `overload` rows (`KINDS`).
+  - **The writes are prepared, not sent**: `setSelfUse(JsonNode)` and `requestStatus` - the body is the caller's; the
+    documentation of the platform is behind its login, so the charge task verifies the fields with the owner first.
+  - **Rehearsed** (2026-11-01): the released 0.5.0 image applied V1-V5 with an open meter row, the new jar V6; two alarms
+    open at once, the same one twice refused, an alarm without detail refused; the monitor took up only the meter row.
 - **The map of type 33** (`Type33`, pinned by `Type33Test` on `src/test/resources/solax/*.json` - answers of
   2026-10-23 19:52, 2026-10-27 20:49, 2026-10-28 10:27 and 2026-10-29 19:09 with invented dongle and inverter serials;
   the last three compared with SolaxCloud (the last one with the Pro 3EM as well), Developer Platform `v2/device/realtime_data` and `v2/plant/realtime_data`, within one

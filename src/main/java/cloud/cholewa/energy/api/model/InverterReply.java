@@ -17,6 +17,8 @@ import java.util.Map;
 //frequency Hz, powerFactor, temperature °C of the inverter
 //dailyYield, totalYield - kWh produced today and since it was set up
 //measuredAt - the house time of the reading; stale - no reading, older than its bound, or the last read failed
+//source - local (the dongle) or cloud (the SolaX cloud, while the dongle is unreachable - HAS-329: its measuredAt is the
+//time of the plant, runMode and gridPower left out); left out without a reading
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record InverterReply(
     String id,
@@ -35,6 +37,7 @@ public record InverterReply(
     Double dailyYield,
     Double totalYield,
     LocalDateTime measuredAt,
-    @JsonInclude(JsonInclude.Include.ALWAYS) boolean stale
+    @JsonInclude(JsonInclude.Include.ALWAYS) boolean stale,
+    String source
 ) {
 }

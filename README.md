@@ -45,7 +45,9 @@ planned outage of Tauron.
   the return told on Discord - the loss, the low battery and the return also by SMS to the administrators of the
   household - stored in `grid_outage`, `GET /home/energy/outages` and the grid in `/status`;
 - **the sources watched** (HAS-332): the SOLAX dongle and the grid meter silent, a phase of the meter overloaded -
-  told on Discord, stored in `source_alert`.
+  told on Discord, stored in `source_alert`;
+- **the SolaX cloud** (HAS-329): the backup of the dongle - the SOLAX and its battery from the SolaX Developer Platform
+  every 5 min, served while the dongle is stale - and the alarms of the inverter every 15 min, told on Discord.
 
 **The outages of the grid** - only the inverter knows the grid: the Pro 3EM goes dark with an empty battery, and the
 cluster runs in the house.
@@ -84,11 +86,29 @@ cluster runs in the house.
 - The episodes are kept in `source_alert` (open and closed), so a restart neither repeats an alert nor forgets a
   return; the alert does not wait for the database - a row it does not take is stored with a later pass.
 
-The SOFAR and the SolaX cloud are not known yet. What comes next:
+**The SolaX cloud** (HAS-329) - the SolaX Developer Platform with the application of the owner:
+
+- **The token**: OAuth2 client credentials, held in memory, taken anew a day before it expires (30 days) and once when a
+  call says it is invalid. Every answer is HTTP 200 with a `code`: 10000 is the success; a failure is logged with its
+  code alone, never the body - an invalid-token answer quotes the token back, and Logbook masks it (`LogbookConfig`,
+  the default filters of the token and the secret kept).
+- **The backup of the dongle**: the inverter and its battery read every `energy.solax.cloud.interval` (PT5M) - the
+  battery is asked by the serial of the inverter (`requestSnType=1`; by its own serial the cloud answers "no
+  permission"). While the dongle is stale, `/inverters/solax` and `/battery` answer the cloud with `source: cloud` and
+  the time of the plant as `measuredAt`, when it is of the same inverter and battery and not older than
+  `energy.solax.cloud.stale-after` (PT15M); the run mode, the grid power and the energy charged / discharged today are
+  left out there (not established in the cloud). Verified against the dongle on 2026-11-01 within one refresh.
+- **The alarms of the inverter** every `energy.solax.cloud.alarm-interval` (PT15M): a new ongoing alarm is an alert
+  naming its name, error code, type and level, one the cloud no longer lists an info; kept in `source_alert` (kind
+  `alarm`) once told, so a restart neither repeats nor forgets one. The battery runs low most days - "Bat Power Low"
+  (error 17) came up about daily in October.
+- **Prepared for the charge task**: the work mode and the result of a command (`setSelfUse`, `requestStatus`) - no
+  write is sent by this service yet; the fields of the body are the charge task's to verify.
+
+The SOFAR is not known yet. What comes next:
 
 | Task | What |
 |---|---|
-| HAS-329 | the SolaX Developer Platform |
 | HAS-330 | the SOFAR inverter |
 | HAS-331 | the balance of the grid and its history |
 
@@ -124,6 +144,10 @@ The SOFAR and the SolaX cloud are not known yet. What comes next:
   24 h), `energy.availability.reminder-every` (PT1H, 10 min - 24 h), `energy.grid.phase-current-warn` (22 A, 1 - 63) and
   `energy.grid.overload-after` (PT3M, 1 - 60 min). To try the overload warning locally, lower the threshold below the
   current of the house (`--energy.grid.phase-current-warn=1`).
+- **The SolaX cloud** (HAS-329): `solax-client-id` and `solax-client-secret` (the application of the owner, the secret
+  `energy`) and `solax-plant-id` (the plant, from the manifest) - mandatory; `energy.solax.cloud.base-url`
+  (`https://openapi-eu.solaxcloud.com`), `interval` (PT5M), `alarm-interval` (PT15M), `stale-after` (PT15M), each 5 - 60
+  min. The battery serial is the registry's (`batterySerialNumber` of the inverter binding).
 
 # API
 
@@ -131,11 +155,11 @@ Under the base path `/home/energy`, routed by the gateway by path, every method.
 
 | Method | Path | Answer |
 |---|---|---|
-| `GET` | `/home/energy/status` | an object (since HAS-334; a bare list of the sources before): `sources` - every source of energy in the order of the dashboard - `meter`, `solax`, `sofar`, `solaxCloud` - with `reachable`: `true`, `false`, or `null` while the service knows nothing of it (the SOFAR and the cloud until their tasks; the SOLAX is the last read of its dongle), and `lastReadingAt` (house time) once a reading came; the meter is `false` after its last will on the broker. `grid` - `state` `present` or `lost` as the SOLAX sees it, `null` while not known (after a start, before two reads agree), and `since` (house time) once known |
+| `GET` | `/home/energy/status` | an object (since HAS-334; a bare list of the sources before): `sources` - every source of energy in the order of the dashboard - `meter`, `solax`, `sofar`, `solaxCloud` - with `reachable`: `true`, `false`, or `null` while the service knows nothing of it (the SOFAR until its task; the SOLAX is the last read of its dongle, `solaxCloud` the last read of the SolaX cloud - HAS-329), and `lastReadingAt` (house time) once a reading came; the meter is `false` after its last will on the broker. `grid` - `state` `present` or `lost` as the SOLAX sees it, `null` while not known (after a start, before two reads agree), and `since` (house time) once known |
 | `GET` | `/home/energy/grid` | the grid meter now: `phases` `a` / `b` / `c` (`voltage` V, `current` A, `activePower` W, `apparentPower` VA, `powerFactor`, `frequency` Hz), `totalActivePower` (W, positive while the house takes from the grid, negative while it returns), `importEnergy` / `exportEnergy` (kWh since the meter was set up), `direction` (`import`, `export`, `idle` within 20 W), `measuredAt` (house time), `stale` (no readings, older than 2 min, or the meter off the broker). What the meter did not send is left out; before the first readings only `{"stale": true}` |
-| `GET` | `/home/energy/inverters` | every inverter of the device registry: `id` (`solax`, `sofar`), `registryId`, `name`, `room`, and from its last reading `runMode` (`waiting`, `checking`, `normal`, `fault`, `permanent fault`, `updating`, `eps check`, `eps`, `self test`, `idle`, `standby`), `acPower` (W), `phases` `a` / `b` / `c` (`voltage`, `current`, `activePower`), `pvPower` (W of the panels together), `pv` `pv1` / `pv2` (`voltage`, `current`, `power` of each string; 0 at night), `gridPower` (W the meter of the SOLAX measures at the grid, positive while the house takes from it - the grid itself is `/grid`), `frequency`, `powerFactor`, `temperature` (°C), `dailyYield` / `totalYield` (kWh), `measuredAt`, `stale` (no reading, older than 1 min, or the last read failed). The SOFAR answers its registry entry and `stale` until its task. `503 REGISTRY_UNAVAILABLE` until the registry was read once |
+| `GET` | `/home/energy/inverters` | every inverter of the device registry: `id` (`solax`, `sofar`), `registryId`, `name`, `room`, and from its last reading `runMode` (`waiting`, `checking`, `normal`, `fault`, `permanent fault`, `updating`, `eps check`, `eps`, `self test`, `idle`, `standby`), `acPower` (W), `phases` `a` / `b` / `c` (`voltage`, `current`, `activePower`), `pvPower` (W of the panels together), `pv` `pv1` / `pv2` (`voltage`, `current`, `power` of each string; 0 at night), `gridPower` (W the meter of the SOLAX measures at the grid, positive while the house takes from it - the grid itself is `/grid`), `frequency`, `powerFactor`, `temperature` (°C), `dailyYield` / `totalYield` (kWh), `measuredAt`, `stale` (no reading, older than 1 min, or the last read failed), `source` (`local` - the dongle, or `cloud` - the SolaX cloud while the dongle is stale, without `runMode` and `gridPower`; left out without a reading). The SOFAR answers its registry entry and `stale` until its task. `503 REGISTRY_UNAVAILABLE` until the registry was read once |
 | `GET` | `/home/energy/inverters/{id}` | one inverter by its brand, as above; `404 NOT_FOUND_INVERTER` for another id or a brand not registered |
-| `GET` | `/home/energy/battery` | the battery of the SOLAX now: `soc` (%), `health` (SOH %), `power` (W, positive while charging, negative while discharging), `direction` (`charging`, `discharging`, `idle` within 20 W), `voltage`, `current`, `temperature`, `cycles`, `remainingKwh` (the SOC of the usable capacity), `chargedToday` / `dischargedToday` (kWh), `measuredAt`, `stale`. Before the first reading only `{"stale": true}` |
+| `GET` | `/home/energy/battery` | the battery of the SOLAX now: `soc` (%), `health` (SOH %), `power` (W, positive while charging, negative while discharging), `direction` (`charging`, `discharging`, `idle` within 20 W), `voltage`, `current`, `temperature`, `cycles`, `remainingKwh` (the SOC of the usable capacity), `chargedToday` / `dischargedToday` (kWh), `measuredAt`, `stale`, `source` (`local` or `cloud` as for the inverters; the cloud without `chargedToday` / `dischargedToday`). Before the first reading only `{"stale": true}` |
 | `GET` | `/home/energy/outages?from=&to=` | the outages of the grid that started in `[from, to)` (house times, ISO `2026-10-01T00:00:00`), the oldest first: `startedAt`, `endedAt` (left out while it lasts), `socAtStart`, `socAtEnd`, `lowestSoc` (%; a value not known left out). `400 INVALID_RANGE` when `from` is not before `to` or they are more than 366 days apart, `400` without either |
 
 # Database
@@ -158,3 +182,6 @@ services needs `GRANT USAGE, CREATE ON SCHEMA public` before the first start, or
   `kind` (`silent` for the first two, `overload` for the phases - checked), since when, the last notification (NULL while
   the alert has not got through) and the end (`closed_at` NULL while it lasts, at most one such row a source: a partial
   unique index).
+- `V6` (HAS-329) `source_alert.detail`: the alarms of the SOLAX in the same table - kind `alarm`, source `solax`, `detail`
+  `<error code>|<start time>|<name>` (required for an alarm, null for the other kinds - checked); at most one open row a
+  source, kind and detail.

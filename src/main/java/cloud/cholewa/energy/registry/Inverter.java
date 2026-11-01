@@ -8,7 +8,8 @@ import java.util.Optional;
 
 //An inverter as the service reads it from the registry (HAS-326): its id, name and room, the brand, the serial
 //number and what answers for it on the home network - the dongle of a SOLAX with the registration number it takes,
-//the logger of a SOFAR. address, registrationNumber and loggerSerial are null where the registry has none
+//the logger of a SOFAR; the serial number of the battery of a SOLAX (the SolaX cloud reads it by that, HAS-329).
+//address, registrationNumber, loggerSerial and batterySerialNumber are null where the registry has none
 public record Inverter(
     long id,
     String name,
@@ -17,7 +18,8 @@ public record Inverter(
     String serialNumber,
     String address,
     String registrationNumber,
-    Long loggerSerial
+    Long loggerSerial,
+    String batterySerialNumber
 ) {
 
     //the inverter of a device of the registry, or nothing for a device without an id or an inverter binding - the
@@ -27,6 +29,6 @@ public record Inverter(
             .filter(binding -> binding.getBrand() != null)
             .flatMap(binding -> Optional.ofNullable(device.getId()).map(id -> new Inverter(id, device.getName(),
                 device.getRoom(), binding.getBrand(), binding.getSerialNumber(), binding.getAddress(),
-                binding.getRegistrationNumber(), binding.getLoggerSerial())));
+                binding.getRegistrationNumber(), binding.getLoggerSerial(), binding.getBatterySerialNumber())));
     }
 }

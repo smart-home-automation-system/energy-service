@@ -9,8 +9,9 @@ import java.util.concurrent.atomic.AtomicReference;
 
 //The WARNs of a read repeated every few seconds (HAS-328): the first failure of a kind is a WARN, the same kind again
 //at most once an hour while it lasts, another kind at once; the first success after failures is an INFO. So a dongle
-//that is off, or a wrong registration number, is one WARN an hour, not one every read
-final class FailureLog {
+//that is off, or a wrong registration number, is one WARN an hour, not one every read. Used by the SolaX cloud reader
+//too (HAS-329)
+public final class FailureLog {
 
     static final Duration REPEAT_AFTER = Duration.ofHours(1);
 
@@ -18,7 +19,7 @@ final class FailureLog {
     private final Clock clock;
     private final AtomicReference<Said> said = new AtomicReference<>();
 
-    FailureLog(final Logger log, final Clock clock) {
+    public FailureLog(final Logger log, final Clock clock) {
         this.log = log;
         this.clock = clock;
     }
@@ -26,7 +27,7 @@ final class FailureLog {
     private record Said(String kind, Instant at) {
     }
 
-    void failed(final String what, final Throwable failure) {
+    public void failed(final String what, final Throwable failure) {
         final Instant now = clock.instant();
         final String kind = kindOf(failure);
         final Said before = said.get();
@@ -44,7 +45,7 @@ final class FailureLog {
         return failure.getClass().getName() + " " + (details < 0 ? message : message.substring(0, details));
     }
 
-    void succeeded(final String what) {
+    public void succeeded(final String what) {
         if (said.getAndSet(null) != null) {
             log.info("The {} is read again", what);
         }

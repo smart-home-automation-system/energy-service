@@ -87,7 +87,7 @@ record SourceWatch(
     }
 
     private static SourceAlertEntity withId(final SourceAlertEntity row, final Long id) {
-        return new SourceAlertEntity(id, row.source(), row.kind(), row.openedAt(), row.lastToldAt(), row.closedAt());
+        return new SourceAlertEntity(id, row.source(), row.kind(), row.openedAt(), row.lastToldAt(), row.closedAt(), null);
     }
 
     private static <V> Map<Source, V> put(final Map<Source, V> map, final Source source, final V value) {

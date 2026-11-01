@@ -119,7 +119,7 @@ class SourceRulesTest {
     @Test
     void should_remind_an_episode_held_over_a_restart_an_hour_after_the_last_notice() {
         held = SourceWatch.loaded(Map.of(Source.METER, new SourceAlertEntity(4L, "meter", "silent",
-            T0.minusHours(2), T0.minusMinutes(30), null)));
+            T0.minusHours(2), T0.minusMinutes(30), null, null)));
 
         assertThat(pass(T0, Map.of(Source.METER, Silence.out(T0.minusHours(2))), Map.of()).notices()).isEmpty();
         assertThat(types(pass(T0.plusMinutes(30), Map.of(Source.METER, Silence.out(T0.minusHours(2))), Map.of())))
