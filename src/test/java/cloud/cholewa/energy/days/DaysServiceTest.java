@@ -96,7 +96,7 @@ class DaysServiceTest {
         when(repository.findByDayLessThanEqualOrderByDay(any())).thenReturn(Flux.empty());
 
         service.months(2030).as(StepVerifier::create)
-            .assertNext(reply -> assertThat(reply.months()).allSatisfy(month -> {
+            .assertNext(reply -> assertThat(reply.months()).hasSize(12).allSatisfy(month -> {
                 assertThat(month.days()).isZero();
                 assertThat(month.stored()).isEqualByComparingTo("0");
             }))

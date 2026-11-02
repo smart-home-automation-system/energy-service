@@ -70,6 +70,9 @@ public class HistoryRepository {
         """;
 
     private static final String OF_INVERTER = "\n  AND inverter_id = :inverterId";
+    private static final String FROM = "from";
+    private static final String TO = "to";
+    private static final String VALUE = "value";
 
     private final DatabaseClient databaseClient;
 
@@ -84,9 +87,9 @@ public class HistoryRepository {
         final DatabaseClient.GenericExecuteSpec spec = databaseClient.sql(HISTORY.formatted(value.table(),
                 value.column(), inverterId == null ? "" : OF_INVERTER))
             .bind("bucketSeconds", bucketSeconds)
-            .bind("from", from)
-            .bind("to", to);
-        return (inverterId == null ? spec : spec.bind("inverterId", inverterId))
+            .bind(FROM, from)
+            .bind(TO, to);
+        return ofInverter(spec, inverterId)
             .map(row -> new HistoryReply.Point(
                 row.get("at", LocalDateTime.class),
                 row.get("avg", BigDecimal.class),
@@ -100,9 +103,9 @@ public class HistoryRepository {
     public Mono<BigDecimal> findLastBefore(final StoredValue value, final Long inverterId, final LocalDateTime from) {
         final DatabaseClient.GenericExecuteSpec spec = databaseClient.sql(LAST_BEFORE.formatted(value.table(),
                 value.column(), inverterId == null ? "" : OF_INVERTER))
-            .bind("from", from);
-        return (inverterId == null ? spec : spec.bind("inverterId", inverterId))
-            .map(row -> row.get("value", BigDecimal.class))
+            .bind(FROM, from);
+        return ofInverter(spec, inverterId)
+            .map(row -> row.get(VALUE, BigDecimal.class))
             .one();
     }
 
@@ -111,10 +114,10 @@ public class HistoryRepository {
                                       final LocalDateTime to) {
         final DatabaseClient.GenericExecuteSpec spec = databaseClient.sql(MAX_IN.formatted(value.table(),
                 value.column(), inverterId == null ? "" : OF_INVERTER))
-            .bind("from", from)
-            .bind("to", to);
-        return (inverterId == null ? spec : spec.bind("inverterId", inverterId))
-            .map(row -> Optional.ofNullable(row.get("value", BigDecimal.class)))
+            .bind(FROM, from)
+            .bind(TO, to);
+        return ofInverter(spec, inverterId)
+            .map(row -> Optional.ofNullable(row.get(VALUE, BigDecimal.class)))
             .one()
             .flatMap(Mono::justOrEmpty);
     }
@@ -123,7 +126,7 @@ public class HistoryRepository {
     public Mono<LocalDateTime> findFirstTime(final StoredValue value, final Long inverterId) {
         final DatabaseClient.GenericExecuteSpec spec = databaseClient.sql(FIRST_TIME.formatted(value.table(),
             value.column(), inverterId == null ? "" : OF_INVERTER));
-        return (inverterId == null ? spec : spec.bind("inverterId", inverterId))
+        return ofInverter(spec, inverterId)
             .map(row -> Optional.ofNullable(row.get("at", LocalDateTime.class)))
             .one()
             .flatMap(Mono::justOrEmpty);
@@ -135,10 +138,16 @@ public class HistoryRepository {
                                        final LocalDateTime to) {
         final DatabaseClient.GenericExecuteSpec spec = databaseClient.sql(LAST_IN.formatted(value.table(),
                 value.column(), inverterId == null ? "" : OF_INVERTER))
-            .bind("from", from)
-            .bind("to", to);
-        return (inverterId == null ? spec : spec.bind("inverterId", inverterId))
-            .map(row -> row.get("value", BigDecimal.class))
+            .bind(FROM, from)
+            .bind(TO, to);
+        return ofInverter(spec, inverterId)
+            .map(row -> row.get(VALUE, BigDecimal.class))
             .one();
+    }
+
+    //the statement bound to the inverter of a value of inverter_reading; as it is for a value of no inverter
+    private static DatabaseClient.GenericExecuteSpec ofInverter(final DatabaseClient.GenericExecuteSpec spec,
+                                                               final Long inverterId) {
+        return inverterId == null ? spec : spec.bind("inverterId", inverterId);
     }
 }

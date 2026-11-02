@@ -7,17 +7,24 @@ import cloud.cholewa.home.model.InverterBrand;
 //from a request
 public enum StoredValue {
 
-    GRID_POWER("grid_reading", "total_power", null),
-    GRID_IMPORT("grid_reading", "import_energy", null),
-    GRID_EXPORT("grid_reading", "export_energy", null),
-    PV_SOLAX("inverter_reading", "pv_power", InverterBrand.SOLAX),
-    PV_SOFAR("inverter_reading", "pv_power", InverterBrand.SOFAR),
-    YIELD_SOLAX("inverter_reading", "daily_yield", InverterBrand.SOLAX),
-    YIELD_SOFAR("inverter_reading", "daily_yield", InverterBrand.SOFAR),
-    BATTERY_POWER("battery_reading", "power", null),
-    BATTERY_SOC("battery_reading", "soc", null),
-    BATTERY_CHARGED_TODAY("battery_reading", "charged_today", null),
-    BATTERY_DISCHARGED_TODAY("battery_reading", "discharged_today", null);
+    GRID_POWER(Tables.GRID, "total_power", null),
+    GRID_IMPORT(Tables.GRID, "import_energy", null),
+    GRID_EXPORT(Tables.GRID, "export_energy", null),
+    PV_SOLAX(Tables.INVERTER, "pv_power", InverterBrand.SOLAX),
+    PV_SOFAR(Tables.INVERTER, "pv_power", InverterBrand.SOFAR),
+    YIELD_SOLAX(Tables.INVERTER, "daily_yield", InverterBrand.SOLAX),
+    YIELD_SOFAR(Tables.INVERTER, "daily_yield", InverterBrand.SOFAR),
+    BATTERY_POWER(Tables.BATTERY, "power", null),
+    BATTERY_SOC(Tables.BATTERY, "soc", null),
+    BATTERY_CHARGED_TODAY(Tables.BATTERY, "charged_today", null),
+    BATTERY_DISCHARGED_TODAY(Tables.BATTERY, "discharged_today", null);
+
+    //the reading tables - a holder, as an enum constant cannot name a static field of its own enum
+    private static final class Tables {
+        private static final String GRID = "grid_reading";
+        private static final String INVERTER = "inverter_reading";
+        private static final String BATTERY = "battery_reading";
+    }
 
     private final String table;
     private final String column;

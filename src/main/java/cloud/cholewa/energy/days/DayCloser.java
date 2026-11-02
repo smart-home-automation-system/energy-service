@@ -109,7 +109,7 @@ public class DayCloser {
         return new EnergyDayEntity(day, number(read.get(0)), number(read.get(1)), number(production),
             number(read.get(2)), number(read.get(3)), number(read.get(4)), number(read.get(5)), number(totals.houseLoad()),
             number(totals.selfConsumption()), number(totals.gridShare()),
-            cloud.map(CloudDays.CloudDay::yield).orElse(null),
+            cloud.map(CloudDays.CloudDay::dailyYield).orElse(null),
             cloud.map(CloudDays.CloudDay::imported).orElse(null),
             cloud.map(CloudDays.CloudDay::exported).orElse(null),
             LocalDateTime.now(clock).truncatedTo(ChronoUnit.MICROS));

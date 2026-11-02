@@ -75,7 +75,7 @@ class FlowsServiceTest {
                 assertThat(reply.batteryPower()).isEqualTo(800.0);
                 assertThat(reply.houseLoad()).isEqualTo(1700.0);
                 assertThat(reply.inputs()).containsOnlyKeys("grid", "solax", "sofar", "battery");
-                assertThat(reply.inputs().get("sofar")).isEqualTo(new FlowsReply.Input(NOW, false));
+                assertThat(reply.inputs()).containsEntry("sofar", new FlowsReply.Input(NOW, false));
             })
             .verifyComplete();
     }
@@ -122,7 +122,7 @@ class FlowsServiceTest {
         service.flows().as(StepVerifier::create)
             .assertNext(reply -> {
                 assertThat(reply.production()).isNull();
-                assertThat(reply.inputs().get("sofar")).isEqualTo(new FlowsReply.Input(null, true));
+                assertThat(reply.inputs()).containsEntry("sofar", new FlowsReply.Input(null, true));
             })
             .verifyComplete();
     }

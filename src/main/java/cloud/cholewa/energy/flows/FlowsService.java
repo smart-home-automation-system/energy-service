@@ -25,7 +25,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.Stream;
 
 //GET /home/energy/flows (HAS-331): the balance of the house now, from what the other reads answer - the grid meter
 //(/grid), both inverters (/inverters, the SolaX cloud standing for the dongle as there) and the battery (/battery); none
@@ -99,7 +98,7 @@ public class FlowsService {
         final Double gridPower = inputs.grid().stale() ? null : inputs.grid().totalActivePower();
         final Double batteryPower = inputs.battery().stale() ? null : inputs.battery().power();
         final Double production = solaxPv == null || sofarPv == null ? null : solaxPv + sofarPv;
-        final Double houseLoad = Stream.of(production, gridPower, batteryPower).anyMatch(value -> value == null) ? null
+        final Double houseLoad = production == null || gridPower == null || batteryPower == null ? null
             : production + gridPower - batteryPower;
         final Map<String, FlowsReply.Input> known = new LinkedHashMap<>();
         known.put("grid", new FlowsReply.Input(inputs.grid().measuredAt(), inputs.grid().stale()));

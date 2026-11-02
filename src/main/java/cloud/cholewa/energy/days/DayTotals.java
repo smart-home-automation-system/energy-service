@@ -2,6 +2,7 @@ package cloud.cholewa.energy.days;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Stream;
 
@@ -26,7 +27,7 @@ public record DayTotals(
 
     //null when any of its inputs is not known
     public BigDecimal houseLoad() {
-        return Stream.of(production, imported, exported, charged, discharged).anyMatch(value -> value == null) ? null
+        return Stream.of(production, imported, exported, charged, discharged).anyMatch(Objects::isNull) ? null
             : production.add(imported).subtract(exported).subtract(charged).add(discharged)
                 .setScale(KWH_SCALE, RoundingMode.HALF_UP);
     }

@@ -21,7 +21,7 @@ public class CloudDays {
     private final Map<LocalDate, CloudDay> days = new ConcurrentHashMap<>();
 
     //what the cloud counted for a day so far, kWh; a value not read is null
-    public record CloudDay(Double yield, Double imported, Double exported) {
+    public record CloudDay(Double dailyYield, Double imported, Double exported) {
     }
 
     public Optional<CloudDay> of(final LocalDate day) {
@@ -32,7 +32,7 @@ public class CloudDays {
         Optional.ofNullable(SolaxCloudState.plantTime(answer.plantLocalTime())).map(LocalDateTime::toLocalDate)
             .ifPresent(day -> {
                 days.merge(day, new CloudDay(answer.dailyYield(), null, null),
-                    (held, read) -> new CloudDay(read.yield(), held.imported(), held.exported()));
+                    (held, read) -> new CloudDay(read.dailyYield(), held.imported(), held.exported()));
                 forgetBefore(day);
             });
     }
@@ -41,7 +41,7 @@ public class CloudDays {
         Optional.ofNullable(SolaxCloudState.plantTime(answer.plantLocalTime())).map(LocalDateTime::toLocalDate)
             .ifPresent(day -> {
                 days.merge(day, new CloudDay(null, answer.dailyImported(), answer.dailyExported()),
-                    (held, read) -> new CloudDay(held.yield(), read.imported(), read.exported()));
+                    (held, read) -> new CloudDay(held.dailyYield(), read.imported(), read.exported()));
                 forgetBefore(day);
             });
     }

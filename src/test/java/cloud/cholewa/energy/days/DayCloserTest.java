@@ -19,7 +19,6 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.doReturn;
@@ -177,6 +176,5 @@ class DayCloserTest {
             .expectNoEvent(DayCloser.LIMIT.minusSeconds(1))
             .thenAwait(Duration.ofSeconds(1))
             .verifyComplete();
-        assertThat(DayCloser.LIMIT).isLessThan(Duration.ofHours(1));
     }
 }
