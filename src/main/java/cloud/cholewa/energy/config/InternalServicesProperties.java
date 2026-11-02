@@ -7,8 +7,9 @@ import org.springframework.validation.annotation.Validated;
 import java.net.URI;
 
 //The services this one calls inside the cluster, by k8s DNS (HAS-328). database - database-service, the device
-//registry the inverters (the kind inverter, HAS-326) are read from
+//registry the inverters (the kind inverter, HAS-326) are read from; weather - weather-service, the illuminance of the
+//weather station of the house (HAS-333)
 @Validated
 @ConfigurationProperties("internal.service")
-public record InternalServicesProperties(@NotNull URI database) {
+public record InternalServicesProperties(@NotNull URI database, @NotNull URI weather) {
 }

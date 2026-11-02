@@ -36,7 +36,7 @@ class DatabaseServiceClientConfigTest {
     void should_call_the_address_of_database_service() throws InterruptedException {
         server.enqueue(new MockResponse.Builder().code(200).body("ok").build());
         final WebClient client = config.databaseServiceWebClient(WebClient.builder(), connectionProvider,
-            new InternalServicesProperties(URI.create("http://localhost:" + server.getPort())));
+            new InternalServicesProperties(URI.create("http://localhost:" + server.getPort()), URI.create("http://localhost:1")));
 
         client.get().uri("/home/device/registry").retrieve().bodyToMono(String.class).as(StepVerifier::create)
             .expectNext("ok")

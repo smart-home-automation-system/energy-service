@@ -151,6 +151,15 @@ MQTT firmware, tcp/8899 is closed - there is no local path):
 - **The retention**: every night at 03:20 the readings older than `energy.history.retention` (730 days) are deleted in
   batches of 5000, never the latest row of a table or an inverter; the days are kept forever.
 
+**The inverter that does not produce in the sun** (HAS-333): every minute the sun above the horizon (sunrise to sunset
+at the house - the civil dawn and dusk outside), the illuminance of the weather station (`GET /home/weather/current` of
+weather-service - the station has no solar radiation, the illuminance is its one metric of the sun) and both inverters as
+`/inverters` answers them. The sun shines at `energy.production.illuminance-threshold` (20 000 lx) or above; an inverter
+giving less than `energy.production.min-power` (100 W) while it does, for `energy.production.silence` (PT15M), is an
+alert naming it, the power and the illuminance - a reminder every hour while still low in the sun, an info when it
+produces again; kept in `source_alert` (kind `production`, V9). Never judged: a station not known or stale, a stale
+inverter (the availability alert covers it), the SOLAX in EPS (the outage alert covers it).
+
 # Run locally
 
 - Build: `mvn verify` (JDK 21) - **needs a Docker** since HAS-331: `HistoryRepositoryTest` runs the PostgreSQL-only SQL
@@ -193,6 +202,10 @@ MQTT firmware, tcp/8899 is closed - there is no local path):
   of the inverter is the registry's (`serialNumber` of the inverter binding, brand `sofar`).
 - **The history and the days** (HAS-331): `energy.history.retention` (730d; a bare number is days, 31 - 3650 days),
   `energy.settlement.ratio` (0.7, above 0 to 1) and `energy.settlement.period-start` (9, 1 - 12).
+- **The production watch** (HAS-333): `location-latitude` / `location-longitude` (the house, from the manifest - mandatory,
+  the values of blinds-service and light-service), `internal.service.weather` (`http://localhost:6010` under `local`),
+  `energy.production.silence` (PT15M, 5 min - 2 h), `illuminance-threshold` (20 000 lx), `min-power` (100 W),
+  `reminder-every` (PT1H).
 
 # API
 
@@ -240,3 +253,5 @@ services needs `GRANT USAGE, CREATE ON SCHEMA public` before the first start, or
   `energy_day`: one row a closed day, keyed by the date - the totals of the day in kWh, the self-consumption and the grid
   share, the cross-check of the SolaX cloud and the time it was closed; kept forever. The readings of V2 and V3 are kept
   730 days (`energy.history.retention`).
+- `V9` (HAS-333) the inverter that does not produce in the sun in `source_alert` - kind `production`, source `solax` or
+  `sofar`, no detail; at most one open row an inverter.

@@ -21,8 +21,13 @@ public final class HouseTimes {
 
     //the times of the house in its zone, so that an episode across the change of the clocks has its real length
     public static String length(final LocalDateTime from, final LocalDateTime to) {
+        return minutes(Math.max(0, between(from, to).toMinutes()));
+    }
+
+    //the time between two times of the house, measured in its zone
+    public static Duration between(final LocalDateTime from, final LocalDateTime to) {
         final ZoneId house = ZoneId.systemDefault();
-        return minutes(Math.max(0, Duration.between(from.atZone(house), to.atZone(house)).toMinutes()));
+        return Duration.between(from.atZone(house), to.atZone(house));
     }
 
     public static String minutes(final long minutes) {
