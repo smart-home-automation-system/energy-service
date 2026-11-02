@@ -12,4 +12,7 @@ public interface SourceAlertRepository extends ReactiveCrudRepository<SourceAler
 
     //the episodes of one source and kind that last - the alarms of the SOLAX and the faults of the SOFAR apart (HAS-330)
     Flux<SourceAlertEntity> findByClosedAtIsNullAndSourceAndKind(String source, String kind);
+
+    //every episode that lasts, newest first - the open alarms of the dashboard (HAS-341)
+    Flux<SourceAlertEntity> findByClosedAtIsNullOrderByOpenedAtDesc();
 }

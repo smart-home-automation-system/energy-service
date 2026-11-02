@@ -1,5 +1,7 @@
 package cloud.cholewa.energy.api;
 
+import cloud.cholewa.energy.alert.AlertService;
+import cloud.cholewa.energy.api.model.AlertReply;
 import cloud.cholewa.energy.api.model.BatteryDirection;
 import cloud.cholewa.energy.api.model.BatteryReply;
 import cloud.cholewa.energy.api.model.DayReply;
@@ -71,6 +73,25 @@ class EnergyControllerTest {
     private DaysService daysService;
     @MockitoBean
     private GridOutageService gridOutageService;
+    @MockitoBean
+    private AlertService alertService;
+
+    //HAS-341: the open alarms - the detail of an alarm written out, left out for the other kinds
+    @Test
+    void should_answer_the_open_alarms() {
+        when(alertService.alerts()).thenReturn(Mono.just(List.of(
+            new AlertReply("sofar", "alarm", LocalDateTime.of(2026, 11, 2, 12, 0), "GridOVP"),
+            new AlertReply("phase b", "overload", LocalDateTime.of(2026, 11, 2, 10, 0), null))));
+
+        webTestClient.get().uri("/alerts")
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody().json("""
+                [
+                  {"source": "sofar", "kind": "alarm", "openedAt": "2026-11-02T12:00:00", "detail": "GridOVP"},
+                  {"source": "phase b", "kind": "overload", "openedAt": "2026-11-02T10:00:00"}
+                ]""", JsonCompareMode.STRICT);
+    }
 
     //a source not known is reachable null, written out - never false; its last reading is left out. The grid as the
     //SOLAX sees it next to the sources (HAS-334)
