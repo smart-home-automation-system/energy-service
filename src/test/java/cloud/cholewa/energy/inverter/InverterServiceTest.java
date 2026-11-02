@@ -7,6 +7,9 @@ import cloud.cholewa.energy.error.EnergyError;
 import cloud.cholewa.energy.error.EnergyException;
 import cloud.cholewa.energy.registry.InverterRegistry;
 import cloud.cholewa.energy.solax.RunMode;
+import cloud.cholewa.energy.sofar.SofarSamples;
+import cloud.cholewa.energy.sofar.SofarState;
+import cloud.cholewa.energy.sofar.SofarTracker;
 import cloud.cholewa.energy.solax.SolaxProperties;
 import cloud.cholewa.energy.solax.SolaxSamples;
 import cloud.cholewa.energy.solax.SolaxState;
@@ -42,23 +45,25 @@ class InverterServiceTest {
     private final InverterRegistry registry = mock(InverterRegistry.class);
     private final SolaxTracker tracker = mock(SolaxTracker.class);
     private final SolaxCloudTracker cloudTracker = mock(SolaxCloudTracker.class);
+    private final SofarTracker sofarTracker = mock(SofarTracker.class);
     private final InverterService service = new InverterService(registry, tracker,
         new SolaxProperties(Duration.ofSeconds(15), Duration.ofMinutes(1), 26.5), cloudTracker,
-        CloudSamples.PROPERTIES, clock);
+        CloudSamples.PROPERTIES, sofarTracker, SofarSamples.PROPERTIES, clock);
 
     @BeforeEach
     void setUp() {
         when(registry.current()).thenReturn(Optional.of(List.of(solax("192.0.2.158"), sofar())));
         when(tracker.current()).thenReturn(new SolaxState(ID, reading(EVENING), READ_AT, true));
         when(cloudTracker.current()).thenReturn(new SolaxCloudState(null, null, null, null));
+        when(sofarTracker.current()).thenReturn(new SofarState(null, null, null, null));
     }
 
-    //the SOLAX with its reading, the SOFAR with its registry entry only until its task
+    //the SOLAX with its reading, the SOFAR with its registry entry before its first reading
     @Test
     void should_answer_every_inverter_of_the_registry() {
         service.inverters().as(StepVerifier::create)
             .expectNext(List.of(solaxReply(false), new InverterReply("sofar", 135L, "SOFAR inverter", "boiler",
-                null, null, null, null, null, null, null, null, null, null, null, null, true, null)))
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, true, null)))
             .verifyComplete();
     }
 
@@ -94,7 +99,7 @@ class InverterServiceTest {
         when(tracker.current()).thenReturn(new SolaxState(null, null, null, null));
 
         service.inverter("solax").as(StepVerifier::create)
-            .expectNext(new InverterReply("solax", ID, "SOLAX inverter", "garage", null, null, null, null, null, null,
+            .expectNext(new InverterReply("solax", ID, "SOLAX inverter", "garage", null, null, null, null, null, null, null, null,
                 null, null, null, null, null, null, true, null))
             .verifyComplete();
     }
@@ -135,6 +140,63 @@ class InverterServiceTest {
             .verify();
     }
 
+    //HAS-330: the SOFAR with its reading from the Solarman cloud - its state and faults in words, the time the logger
+    //collected it, no run mode, grid power or power factor
+    @Test
+    void should_answer_the_sofar_with_its_reading_from_the_solarman_cloud() {
+        when(sofarTracker.current()).thenReturn(SofarSamples.state(SofarSamples.reading(), true));
+        moveTo(SofarSamples.COLLECTED_AT.plusMinutes(3));
+
+        service.inverter("sofar").as(StepVerifier::create)
+            .expectNext(sofarReply(false))
+            .verifyComplete();
+    }
+
+    //collected longer ago than energy.sofar.cloud.stale-after, or the last read failed: served, marked stale
+    @Test
+    void should_serve_an_old_or_failed_sofar_reading_as_stale() {
+        when(sofarTracker.current()).thenReturn(SofarSamples.state(SofarSamples.reading(), true),
+            SofarSamples.state(SofarSamples.reading(), false));
+        moveTo(SofarSamples.COLLECTED_AT.plusMinutes(16));
+
+        service.inverter("sofar").as(StepVerifier::create).expectNext(sofarReply(true)).verifyComplete();
+        clock.moveBy(Duration.ofMinutes(-14));
+        service.inverter("sofar").as(StepVerifier::create).expectNext(sofarReply(true)).verifyComplete();
+    }
+
+    //a reading of another registry entry is not this SOFAR's
+    @Test
+    void should_answer_the_registry_entry_for_a_reading_of_another_sofar() {
+        when(sofarTracker.current()).thenReturn(new SofarState(999L, SofarSamples.reading(), SofarSamples.COLLECTED_AT,
+            true));
+
+        service.inverter("sofar").as(StepVerifier::create)
+            .assertNext(reply -> {
+                assertThat(reply.stale()).isTrue();
+                assertThat(reply.source()).isNull();
+                assertThat(reply.pvPower()).isNull();
+            })
+            .verifyComplete();
+    }
+
+    //the clock moved to this house time - through the zone, so that a change of the clocks in between counts
+    private void moveTo(final LocalDateTime houseTime) {
+        clock.moveBy(Duration.between(clock.instant(), houseTime.atZone(SolaxSamples.HOUSE).toInstant()));
+    }
+
+    private static InverterReply sofarReply(final boolean stale) {
+        final Map<String, PhaseReply> phases = new LinkedHashMap<>();
+        phases.put("a", new PhaseReply(234.4, 0.78, 80.0, null, null, null));
+        phases.put("b", new PhaseReply(234.1, 0.80, 90.0, null, null, null));
+        phases.put("c", new PhaseReply(235.4, 0.79, 90.0, null, null, null));
+        final Map<String, PvReply> pv = new LinkedHashMap<>();
+        pv.put("pv1", new PvReply(356.0, 0.77, 270.0));
+        pv.put("pv2", new PvReply(0.0, 0.0, 0.0));
+        return new InverterReply("sofar", 135L, "SOFAR inverter", "boiler", null, "Grid connected", List.of(), 270.0,
+            phases, 200.0, pv, null, 49.99, null, 32.0, 0.26, 5421.5, SofarSamples.COLLECTED_AT, stale,
+            "solarman-cloud");
+    }
+
     private static InverterReply solaxReply(final boolean stale) {
         final Map<String, PhaseReply> phases = new LinkedHashMap<>();
         phases.put("a", new PhaseReply(234.0, 2.1, 479.0, null, null, null));
@@ -143,7 +205,7 @@ class InverterServiceTest {
         final Map<String, PvReply> pv = new LinkedHashMap<>();
         pv.put("pv1", new PvReply(0.0, 0.0, 0.0));
         pv.put("pv2", new PvReply(0.0, 0.0, 0.0));
-        return new InverterReply("solax", ID, "SOLAX inverter", "garage", RunMode.NORMAL, 1755.0, phases, 0.0, pv,
+        return new InverterReply("solax", ID, "SOLAX inverter", "garage", RunMode.NORMAL, null, null, 1755.0, phases, 0.0, pv,
             0.0, 50.01, 0.95, 48.0, 38.6, 4510.6, READ_AT, stale, "local");
     }
 
@@ -163,7 +225,7 @@ class InverterServiceTest {
         pv.put("pv2", new PvReply(272.0, 1.1, 301.0));
 
         service.inverter("solax").as(StepVerifier::create)
-            .expectNext(new InverterReply("solax", ID, "SOLAX inverter", "garage", null, 826.0, phases, 1073.0, pv,
+            .expectNext(new InverterReply("solax", ID, "SOLAX inverter", "garage", null, null, null, 826.0, phases, 1073.0, pv,
                 null, 49.97, 0.86, 48.0, 4.0, 4558.4, LocalDateTime.of(2026, 10, 27, 20, 45), false, "cloud"))
             .verifyComplete();
     }

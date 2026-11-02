@@ -9,8 +9,8 @@ repository map and working rules come from the workspace-level context
 (`organization-repository/claude/organization.md`). The user writes the code in this
 repository themselves; Claude's default role here is analysis, code review and security
 review - the owner had Claude implement the scaffold (HAS-325), the grid meter (HAS-327), the
-SOLAX (HAS-328), the outages of the grid (HAS-334), the monitor of the sources (HAS-332) and the SolaX cloud (HAS-329),
-and reviews them in IntelliJ.
+SOLAX (HAS-328), the outages of the grid (HAS-334), the monitor of the sources (HAS-332), the SolaX cloud (HAS-329) and
+the SOFAR (HAS-330), and reviews them in IntelliJ.
 
 ## Role in the system
 
@@ -21,11 +21,11 @@ and reviews them in IntelliJ.
 - Calls: the Shelly Pro 3EM over its RPC (`EM.GetStatus`, `EMData.GetStatus`, HAS-327); the dongle of the
   SOLAX over its local API and `database-service` for the inverters of the device registry
   (`GET /home/device/registry?kind=inverter&enabled=true`, HAS-328). The SolaX Developer Platform (HAS-329,
-  `openapi-eu.solaxcloud.com`). Planned: the SOFAR (HAS-330).
+  `openapi-eu.solaxcloud.com`). The Solarman Open API for the SOFAR (HAS-330, `globalapi.solarmanpv.com`).
 - Publishes: the alerts, reminders and infos of the outages of the grid to the exchange `notification` of
   `/notification` (user `notification`, `notification-rabbitmq-password`; HAS-334) - the loss, a low battery and
   the return marked for an SMS; the silence of the SOLAX dongle and the grid meter and the overload of a phase
-  (HAS-332), Discord only; the alarms of the SOLAX from the SolaX cloud (HAS-329).
+  (HAS-332), Discord only; the alarms of the SOLAX from the SolaX cloud (HAS-329); the faults of the SOFAR (HAS-330).
 - Uses libraries: `cholewa-commons` 1.13.0 (the pooled `ConnectionFactory`, the required
   properties, the scheduler pool and `ScheduledPass`, the error contract, `NotificationConnection` and the
   `...Sms` methods of `NotificationPublisher` - HAS-334), `smart-home-sdk` 1.15.0 (the kind
@@ -59,8 +59,8 @@ and reviews them in IntelliJ.
 - **`V1` is an empty baseline** (only a comment): Flyway applies it and writes its history table,
   so the start has no `No migrations found` WARN and proves the grant.
 - **`GET /status` is an object since HAS-334** (`sources` and `grid`; a bare list of the sources before - Bruno
-  was its only reader). **It answers a source not known with `reachable: null`** - the inverters and the cloud
-  until their tasks, the meter until its first message - written out as `null`, never left out or
+  was its only reader). **It answers a source not known with `reachable: null`** - every source after a start
+  until its first reading or read - written out as `null`, never left out or
   `false`; `lastReadingAt` is left out while there is none. `EnergySource` holds the order and the
   wire names (`solaxCloud`), the contract of the dashboard.
 - **Scheduling is off under `test`** (`SchedulingConfig`, `@Profile("!test")`); every reactive
@@ -122,8 +122,8 @@ and reviews them in IntelliJ.
   - `SolaxTracker` holds the state in one `AtomicReference`; a change of the run mode is an INFO with its raw code.
   - `SolaxSnapshot` writes `inverter_reading` and `battery_reading` (V3) every minute, each only when a value
     changed - the PV of both strings together and each string, 0 at night.
-  - The API: `GET /inverters` (every inverter of the registry; the SOFAR with its registry entry and `stale` until
-    HAS-330), `GET /inverters/{solax|sofar}` (`404 NOT_FOUND_INVERTER`), `GET /battery` (`remainingKwh` = SOC of
+  - The API: `GET /inverters` (every inverter of the registry; one without a reading with its registry entry and `stale` -
+    the SOFAR since HAS-330 below), `GET /inverters/{solax|sofar}` (`404 NOT_FOUND_INVERTER`), `GET /battery` (`remainingKwh` = SOC of
     `energy.solax.battery-capacity`, 26.5 kWh, the usable capacity SolaxCloud gives; `direction` by
     `BatteryDirection.DEAD_BAND_WATTS`, 20 W), `stale` after `energy.solax.stale-after` (PT1M) or a failed read;
     `GET /status` - `solax.reachable` is the last read. A value the map does not establish is left out.
@@ -182,8 +182,8 @@ and reviews them in IntelliJ.
     6 s; six of them fit the bound), then every unsaved row stored - one the database does not take stays in
     `SourceWatch.unsaved`, one an episode (the newest), and the open one takes its id once stored.
   - `source_alert` (V5): `source` and `kind` checked together (silent: solax, meter; overload: phase a / b / c), at most one
-    open row a source (partial unique index `source_alert_one_open`). **A new source (the SOFAR, HAS-330) is a migration
-    of both checks** and a constant of `Source`; an open row of a source this version does not know is logged and left.
+    open row a source (partial unique index `source_alert_one_open`). **A new source is a migration
+    of both checks** (the SOFAR, V7 - its faults as `alarm` rows, not a constant of `Source`: it is never `silent`); an open row of a source this version does not know is logged and left.
   - **Rehearsed** (2026-11-01): the released 0.4.0 image applied V1-V4 on a throwaway PostgreSQL with SSL (a user with
     `USAGE, CREATE` on `public` only), the new jar V5; with no meter and no broker (`meter-silent-after` 1 min) the
     meter episode was stored with `last_told_at` NULL and the alert tried every minute; a second open row and
@@ -193,9 +193,13 @@ and reviews them in IntelliJ.
     message quotes the token back), 10500 "no permission" (a battery asked by its own serial). The token answer is
     `{code, result: {access_token, expires_in}}` - judged by the token being there, not by the code. A failure is a
     `SolaxCloudException` with the code alone - **never the body or the message of the cloud**.
-  - **Logbook**: `LogbookConfig.solaxCloudBodyFilter` replaces the body filter of Logbook (its bean steps back), so it
-    merges `BodyFilters.defaultValue()` (access_token, client_secret) with the mask of the quoted token; the
-    Authorization header is masked by the default header filter. A new bean of `BodyFilter` must keep the default.
+  - **Logbook**: `LogbookConfig.maskingBodyFilter` replaces the body filter of Logbook (its bean steps back), so it
+    merges `BodyFilters.defaultValue()` (access_token, client_secret) with the mask of the quoted token and, since
+    HAS-330, the JSON fields of Solarman (`appSecret`, `email`, `password`, `access_token`, `refresh_token`, `uid` - a
+    number, so `replacePrimitiveJsonProperty`, not the string-only filter); `solarmanQueryFilter` merges the default query
+    filter with the `appId` of the token request. The Authorization header is masked by the default header filter. A new
+    bean of `BodyFilter` or `QueryFilter` must keep the default. Checked on the rehearsal of HAS-330: no secret, account,
+    hash or appId in the log of a real token request.
   - **The token** is held in an `AtomicReference`, taken anew a day before it expires and once after 10402 / HTTP 401
     (a second refusal is a failure, not a loop); "bearer" with a lowercase b.
   - **The battery is asked by the serial of the inverter** with `deviceType=2&requestSnType=1`; the answer's `deviceSn`
@@ -213,6 +217,42 @@ and reviews them in IntelliJ.
     documentation of the platform is behind its login, so the charge task verifies the fields with the owner first.
   - **Rehearsed** (2026-11-01): the released 0.5.0 image applied V1-V5 with an open meter row, the new jar V6; two alarms
     open at once, the same one twice refused, an alarm without detail refused; the monitor took up only the meter row.
+- **The SOFAR** (HAS-330, package `sofar`) - what is easy to break:
+  - **The owner's decision (2026-11-02)**: the Solarman Open API, granted by Solarman; the RS-485 gateway of the task's
+    variant B is not needed. The logger runs its MQTT firmware (tcp/8899 closed) - there is no local path.
+  - `SolarmanClient`: the token by `POST /account/v1.0/token?appId=&language=en` with `{appSecret, email, password}` - the
+    password as its **lowercase SHA-256** (`energy.sofar.cloud.password-sha256`, validated as 64 hex digits); a personal
+    token of the account reads the plant (no organisation token). `expires_in` is **a string of seconds** ("5183999", 60
+    days). Every answer is HTTP 200 with `success`; `2101019` an invalid token (taken anew once, as the SolaX cloud),
+    `2101025` refused credentials, `2101016` a device without records - a `SolarmanException` with the code alone.
+  - `SofarReading.of` maps `dataList` by `key` (pinned by `SofarReadingTest` on `src/test/resources/solarman/`, the answer
+    of 2026-11-02 10:19 with an invented serial): `PVTP` the panels, `DP1`/`DV1`/`DC1` and `DP2`/... the strings,
+    `T_AC_OP` the AC side, `AP1-3`/`AV1-3`/`AC1-3` the phases, `A_Fo1`, `INV_ST1` the state **in words** ("Grid connected"),
+    `Sta_1`-`Sta_9` the faults **in words**, empty when none - not bits, so the alert names the words; `T_MDU1` the power
+    module °C, `Etdy_ge1` / `Et_ge0` kWh. `collectionTime` (epoch s) is `measuredAt`. The inverter's own grid counters
+    (`PG_Pt1`, `t_gc1`, `Et_pu1`) are its output side, not the house - not read. An answer of another `deviceSn` is a failed
+    read.
+  - `SofarReader` every `energy.sofar.cloud.interval` (PT5M, 1 - 60 min, bounded at 50 s): **reachable only for a fresh
+    reading** - collected within `stale-after` (PT15M) - since the cloud keeps answering the last reading of a logger that is
+    off; a failed read, a read cut off by the bound (only before its reading - `flatMap` cancels its source after it too,
+    hence the flag) and a SOFAR gone from a registry that was read mark it unreachable, the last reading kept.
+  - **The faults are decided inside the read** (`SofarFaultWatch.check`, not scheduled - the /code-review of HAS-330: a
+    watch of its own could miss a fault of one reading): only a fresh reading decides; rows `sofar` / `alarm` with the words
+    as `detail` (cut to 200), the table follows the broker as `SolaxAlarmWatch`. `SolaxAlarmWatch` reads its rows by source
+    and kind since (`findByClosedAtIsNullAndSourceAndKind`), so the two never close each other's rows.
+  - `V7` adds `sofar` to both checks of `source_alert` (`alarm` only - the SOFAR is never `silent`). **No rollback below
+    0.7.0 while a `sofar` row is open**: the `SolaxAlarmWatch` of 0.6.0 reads every open `alarm` row and would close it as
+    a SOLAX alarm ("SOLAX alarm over") - close the sofar rows by hand first.
+  - `SofarSnapshot` writes `inverter_reading` (inverter 135) a minute when a value changed, at the time of collection;
+    `run_mode` NULL - the state of the SOFAR is not one of the run modes of the SOLAX.
+  - The API: `state`, `faults` (an empty list without a fault) and `source: solarman-cloud`; no `runMode`, `gridPower`,
+    `powerFactor`. `/status`: `sofar.reachable` as above, `lastReadingAt` the time of collection.
+  - **Rehearsed** (2026-11-02): the released 0.6.0 image applied V1-V6 on a throwaway PostgreSQL with SSL (a user with
+    `USAGE, CREATE` on `public` only), the new jar V7 with the real Solarman cloud and the registry through a port-forward:
+    `/inverters/sofar` answered the reading of 10:34 (PV 300 W, grid connected, no fault), `/status` `sofar` reachable; a
+    `sofar` / `silent` row refused; an open `sofar` fault row left alone by the SOLAX alarm watch and announced as over by
+    the fault watch at the next fresh reading (kept open while the broker was missing); the SOFAR row of `inverter_reading`
+    written with `run_mode` NULL.
 - **The map of type 33** (`Type33`, pinned by `Type33Test` on `src/test/resources/solax/*.json` - answers of
   2026-10-23 19:52, 2026-10-27 20:49, 2026-10-28 10:27 and 2026-10-29 19:09 with invented dongle and inverter serials;
   the last three compared with SolaxCloud (the last one with the Pro 3EM as well), Developer Platform `v2/device/realtime_data` and `v2/plant/realtime_data`, within one

@@ -87,6 +87,19 @@ energy:
       stale-after: PT15M
       # error codes the household is not told of: 17 Bat Power Low - the battery at its floor, almost every day
       ignored-alarm-codes: "17"
+  # the SOFAR inverter from the Solarman Open API (HAS-330): the inverter itself - its serial number - comes from the
+  # device registry (kind inverter, brand sofar); read every interval (the logger uploads every 5 min), a reading
+  # collected longer ago than stale-after is served as stale. The application Solarman granted the owner and the account
+  # of the plant from the manifest (the secret energy) - no default; the password as its lowercase SHA-256
+  sofar:
+    cloud:
+      base-url: https://globalapi.solarmanpv.com
+      app-id: ${solarman-app-id}
+      app-secret: ${solarman-app-secret}
+      email: ${solarman-email}
+      password-sha256: ${solarman-password-sha256}
+      interval: PT5M
+      stale-after: PT15M
   # the outages of the grid as the SOLAX sees them (HAS-334): one more alert by SMS when the battery falls below
   # low-soc % during an outage, a reminder every reminder-every while it lasts
   outage:
@@ -139,6 +152,14 @@ cholewa:
       variable: solax-client-secret
     - property: energy.solax.cloud.plant-id
       variable: solax-plant-id
+    - property: energy.sofar.cloud.app-id
+      variable: solarman-app-id
+    - property: energy.sofar.cloud.app-secret
+      variable: solarman-app-secret
+    - property: energy.sofar.cloud.email
+      variable: solarman-email
+    - property: energy.sofar.cloud.password-sha256
+      variable: solarman-password-sha256
 
 server:
   port: 6200
@@ -246,6 +267,14 @@ energy:
       client-id: test
       client-secret: test
       plant-id: "1000000000000000000"
+  # a Solarman cloud at an address nothing listens on, an application and an account that are not the ones of the house
+  sofar:
+    cloud:
+      base-url: http://localhost:1
+      app-id: test
+      app-secret: test
+      email: test@example.com
+      password-sha256: "0000000000000000000000000000000000000000000000000000000000000000"
 
 internal:
   service:

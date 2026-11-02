@@ -5,6 +5,9 @@ import cloud.cholewa.energy.meter.GridMeterTracker;
 import cloud.cholewa.energy.meter.GridMeterState;
 import cloud.cholewa.energy.outage.GridOutageService;
 import cloud.cholewa.energy.solax.SolaxSamples;
+import cloud.cholewa.energy.sofar.SofarSamples;
+import cloud.cholewa.energy.sofar.SofarState;
+import cloud.cholewa.energy.sofar.SofarTracker;
 import cloud.cholewa.energy.solax.SolaxState;
 import cloud.cholewa.energy.solax.SolaxTracker;
 import cloud.cholewa.energy.solaxcloud.SolaxCloudState;
@@ -26,13 +29,15 @@ class EnergyStatusServiceTest {
     private final GridMeterTracker tracker = mock(GridMeterTracker.class);
     private final SolaxTracker solaxTracker = mock(SolaxTracker.class);
     private final SolaxCloudTracker cloudTracker = mock(SolaxCloudTracker.class);
+    private final SofarTracker sofarTracker = mock(SofarTracker.class);
     private final EnergyStatusService energyStatusService = new EnergyStatusService(tracker, solaxTracker,
-        cloudTracker, mock(GridOutageService.class));
+        cloudTracker, sofarTracker, mock(GridOutageService.class));
 
     @BeforeEach
     void setUp() {
         when(solaxTracker.current()).thenReturn(new SolaxState(null, null, null, null));
         when(cloudTracker.current()).thenReturn(new SolaxCloudState(null, null, null, null));
+        when(sofarTracker.current()).thenReturn(new SofarState(null, null, null, null));
     }
 
     //after a start nothing is known: every source is there, in the order of the dashboard, and none is known
@@ -102,6 +107,19 @@ class EnergyStatusServiceTest {
             .as(StepVerifier::create)
             .expectNextMatches(sources -> sources.get(1)
                 .equals(new SourceStatusReply("solax", false, LocalDateTime.of(2026, 10, 27, 20, 49))))
+            .verifyComplete();
+    }
+
+    //HAS-330: the SOFAR - whether the last read brought a fresh reading, with the time its logger collected it
+    @Test
+    void should_answer_the_sofar_with_the_time_its_reading_was_collected() {
+        when(tracker.current()).thenReturn(new GridMeterState(null, null, null, null, null, null));
+        when(sofarTracker.current()).thenReturn(SofarSamples.state(SofarSamples.reading(), false));
+
+        energyStatusService.status()
+            .as(StepVerifier::create)
+            .expectNextMatches(sources -> sources.get(2)
+                .equals(new SourceStatusReply("sofar", false, SofarSamples.COLLECTED_AT)))
             .verifyComplete();
     }
 

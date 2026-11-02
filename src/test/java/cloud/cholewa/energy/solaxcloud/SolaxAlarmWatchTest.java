@@ -39,7 +39,7 @@ class SolaxAlarmWatchTest {
 
     @BeforeEach
     void setUp() {
-        when(repository.findByClosedAtIsNullAndKindIn(List.of("alarm"))).thenReturn(Flux.empty());
+        when(repository.findByClosedAtIsNullAndSourceAndKind("solax", "alarm")).thenReturn(Flux.empty());
         when(repository.save(any())).thenAnswer(call -> Mono.just(call.getArgument(0)));
         when(publisher.publishAlert(anyString())).thenReturn(Mono.empty());
         when(publisher.publishInfo(anyString())).thenReturn(Mono.empty());
@@ -80,7 +80,7 @@ class SolaxAlarmWatchTest {
     @Test
     void should_tell_the_end_of_an_alarm_and_close_it() {
         when(client.alarms(true)).thenReturn(Mono.just(new CloudAlarm.Page(0, 0, List.of())));
-        when(repository.findByClosedAtIsNullAndKindIn(List.of("alarm"))).thenReturn(Flux.just(new SourceAlertEntity(5L,
+        when(repository.findByClosedAtIsNullAndSourceAndKind("solax", "alarm")).thenReturn(Flux.just(new SourceAlertEntity(5L,
             "solax", "alarm", LocalDateTime.of(2026, 10, 27, 20, 30), LocalDateTime.of(2026, 10, 27, 20, 30), null,
             "17|2026-10-27 20:30:00|Bat Power Low")));
 
@@ -96,7 +96,7 @@ class SolaxAlarmWatchTest {
 
         watch.check().as(StepVerifier::create).verifyComplete();
 
-        verify(repository, never()).findByClosedAtIsNullAndKindIn(any());
+        verify(repository, never()).findByClosedAtIsNullAndSourceAndKind(any(), any());
         verify(publisher, never()).publishAlert(anyString());
     }
 }

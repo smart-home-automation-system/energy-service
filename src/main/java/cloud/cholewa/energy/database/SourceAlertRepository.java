@@ -9,4 +9,7 @@ public interface SourceAlertRepository extends ReactiveCrudRepository<SourceAler
 
     //the episodes of these kinds that last - at most one a source, kind and detail (the partial unique index of V6)
     Flux<SourceAlertEntity> findByClosedAtIsNullAndKindIn(Collection<String> kinds);
+
+    //the episodes of one source and kind that last - the alarms of the SOLAX and the faults of the SOFAR apart (HAS-330)
+    Flux<SourceAlertEntity> findByClosedAtIsNullAndSourceAndKind(String source, String kind);
 }

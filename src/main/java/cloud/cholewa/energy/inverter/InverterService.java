@@ -6,6 +6,10 @@ import cloud.cholewa.energy.api.model.PvReply;
 import cloud.cholewa.energy.error.EnergyException;
 import cloud.cholewa.energy.registry.Inverter;
 import cloud.cholewa.energy.registry.InverterRegistry;
+import cloud.cholewa.energy.sofar.SofarReading;
+import cloud.cholewa.energy.sofar.SofarState;
+import cloud.cholewa.energy.sofar.SofarTracker;
+import cloud.cholewa.energy.sofar.SolarmanProperties;
 import cloud.cholewa.energy.solax.SolaxProperties;
 import cloud.cholewa.energy.solax.SolaxReading;
 import cloud.cholewa.energy.solax.SolaxState;
@@ -31,7 +35,7 @@ import java.util.stream.Stream;
 
 //The inverters as GET /home/energy/inverters and /inverters/{id} answer them (HAS-328): every inverter of the registry,
 //by its brand as the id; the SOLAX with its reading from the state in memory - the dongle is never asked for a request.
-//The SOFAR answers its registry entry until its task (HAS-330). Before the registry was read once the answer is
+//The SOFAR with its reading from the Solarman cloud (HAS-330), its registry entry and stale before the first. Before the registry was read once the answer is
 //REGISTRY_UNAVAILABLE. "Now" is read inside the chain. While the dongle is stale the SOLAX answers what the SolaX cloud
 //read last, when it is of the same inverter and fresh (HAS-329), with source cloud
 @Service
@@ -40,12 +44,15 @@ public class InverterService {
 
     static final String LOCAL = "local";
     static final String CLOUD = "cloud";
+    static final String SOLARMAN_CLOUD = "solarman-cloud";
 
     private final InverterRegistry inverterRegistry;
     private final SolaxTracker solaxTracker;
     private final SolaxProperties solaxProperties;
     private final SolaxCloudTracker solaxCloudTracker;
     private final SolaxCloudProperties solaxCloudProperties;
+    private final SofarTracker sofarTracker;
+    private final SolarmanProperties solarmanProperties;
     private final Clock clock;
 
     public Mono<List<InverterReply>> inverters() {
@@ -69,6 +76,12 @@ public class InverterService {
     }
 
     InverterReply replyOf(final Inverter inverter, final LocalDateTime now) {
+        if (inverter.brand() == InverterBrand.SOFAR) {
+            final SofarState sofar = sofarTracker.current();
+            return sofar.reading() != null && Long.valueOf(inverter.id()).equals(sofar.inverterId())
+                ? sofar(inverter, sofar, now)
+                : registered(inverter);
+        }
         final SolaxState state = solaxTracker.current();
         final boolean local = inverter.brand() == InverterBrand.SOLAX && state.reading() != null
             && Long.valueOf(inverter.id()).equals(state.inverterId());
@@ -104,7 +117,7 @@ public class InverterService {
         final Double acPower = Stream.of(answer.acPower1(), answer.acPower2(), answer.acPower3()).anyMatch(Objects::isNull)
             ? null : answer.acPower1() + answer.acPower2() + answer.acPower3();
         return new InverterReply(inverter.brand().getValue(), inverter.id(), inverter.name(), room(inverter), null,
-            acPower, phases, answer.mpptTotalInputPower(), pv, null, answer.acFrequency1(), answer.totalPowerFactor(),
+            null, null, acPower, phases, answer.mpptTotalInputPower(), pv, null, answer.acFrequency1(), answer.totalPowerFactor(),
             answer.inverterTemperature(), answer.dailyYield(), answer.totalYield(),
             SolaxCloudState.plantTime(answer.plantLocalTime()), false, CLOUD);
     }
@@ -112,7 +125,7 @@ public class InverterService {
     private InverterReply solax(final Inverter inverter, final SolaxState state, final LocalDateTime now) {
         final SolaxReading reading = state.reading();
         return new InverterReply(inverter.brand().getValue(), inverter.id(), inverter.name(), room(inverter),
-            reading.runMode(), reading.acPower(), phases(reading), reading.pvPower(), pv(reading),
+            reading.runMode(), null, null, reading.acPower(), phases(reading), reading.pvPower(), pv(reading),
             reading.gridPower(),
             reading.frequency(), reading.powerFactor(),
             reading.temperature(), reading.dailyYield(), reading.totalYield(), state.readingAt(),
@@ -121,7 +134,28 @@ public class InverterService {
 
     private static InverterReply registered(final Inverter inverter) {
         return new InverterReply(inverter.brand().getValue(), inverter.id(), inverter.name(), room(inverter),
-            null, null, null, null, null, null, null, null, null, null, null, null, true, null);
+            null, null, null, null, null, null, null, null, null, null, null, null, null, null, true, null);
+    }
+
+    //the SOFAR from the Solarman cloud (HAS-330): its last reading, when it is of this inverter - stale once it was
+    //collected longer ago than the bound or the last read failed
+    private InverterReply sofar(final Inverter inverter, final SofarState state, final LocalDateTime now) {
+        final SofarReading reading = state.reading();
+        final Map<String, PhaseReply> phases = new LinkedHashMap<>();
+        phases.put("a", phase(reading.a()));
+        phases.put("b", phase(reading.b()));
+        phases.put("c", phase(reading.c()));
+        final Map<String, PvReply> pv = new LinkedHashMap<>();
+        pv.put("pv1", new PvReply(reading.pv1().voltage(), reading.pv1().current(), reading.pv1().power()));
+        pv.put("pv2", new PvReply(reading.pv2().voltage(), reading.pv2().current(), reading.pv2().power()));
+        return new InverterReply(inverter.brand().getValue(), inverter.id(), inverter.name(), room(inverter), null,
+            reading.state(), reading.faults(), reading.acPower(), phases, reading.pvPower(), pv, null,
+            reading.frequency(), null, reading.temperature(), reading.dailyYield(), reading.totalYield(),
+            reading.collectedAt(), state.isStale(now, solarmanProperties.staleAfter()), SOLARMAN_CLOUD);
+    }
+
+    private static PhaseReply phase(final SofarReading.Phase phase) {
+        return new PhaseReply(phase.voltage(), phase.current(), phase.power(), null, null, null);
     }
 
     private static String room(final Inverter inverter) {

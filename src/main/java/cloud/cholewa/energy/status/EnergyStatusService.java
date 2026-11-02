@@ -5,6 +5,8 @@ import cloud.cholewa.energy.api.model.StatusReply;
 import cloud.cholewa.energy.meter.GridMeterState;
 import cloud.cholewa.energy.meter.GridMeterTracker;
 import cloud.cholewa.energy.outage.GridOutageService;
+import cloud.cholewa.energy.sofar.SofarState;
+import cloud.cholewa.energy.sofar.SofarTracker;
 import cloud.cholewa.energy.solax.SolaxState;
 import cloud.cholewa.energy.solax.SolaxTracker;
 import cloud.cholewa.energy.solaxcloud.SolaxCloudState;
@@ -18,8 +20,9 @@ import java.util.List;
 
 //What the service knows of each source of energy. The grid meter since HAS-327: reachable as the broker last said
 //(its last will is false, a reading true) and the time of its newest reading. The SOLAX since HAS-328: whether the last
-//read of its dongle succeeded and the time of its last reading. The other sources are not known until their tasks
-//(HAS-330); the SolaX cloud since HAS-329. The availability monitor of HAS-332 will judge them. Since HAS-334 with the grid as the SOLAX sees it
+//read of its dongle succeeded and the time of its last reading. The SolaX cloud since HAS-329. The SOFAR since HAS-330:
+//whether the last read of the Solarman cloud brought a fresh reading and the time its logger collected it. Since HAS-334
+//with the grid as the SOLAX sees it
 @Service
 @RequiredArgsConstructor
 public class EnergyStatusService {
@@ -27,6 +30,7 @@ public class EnergyStatusService {
     private final GridMeterTracker gridMeterTracker;
     private final SolaxTracker solaxTracker;
     private final SolaxCloudTracker solaxCloudTracker;
+    private final SofarTracker sofarTracker;
     private final GridOutageService gridOutageService;
 
     //the answer of GET /status: the sources and the grid
@@ -45,8 +49,12 @@ public class EnergyStatusService {
             case METER -> meter(gridMeterTracker.current());
             case SOLAX -> solax(solaxTracker.current());
             case SOLAX_CLOUD -> solaxCloud(solaxCloudTracker.current());
-            case SOFAR -> SourceStatusReply.notKnown(source.wireName());
+            case SOFAR -> sofar(sofarTracker.current());
         };
+    }
+
+    private static SourceStatusReply sofar(final SofarState state) {
+        return new SourceStatusReply(EnergySource.SOFAR.wireName(), state.reachable(), state.readingAt());
     }
 
     private static SourceStatusReply meter(final GridMeterState state) {

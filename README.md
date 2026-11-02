@@ -33,7 +33,7 @@ service will read them, keep the history and the balance of the grid (net-meteri
 alarm on a lost source, an overloaded phase or a lost grid, and charge the battery before a
 planned outage of Tauron.
 
-**Today it reads the grid meter and the SOLAX and watches the grid** on top of the scaffold of HAS-325:
+**Today it reads the grid meter and both inverters and watches the grid** on top of the scaffold of HAS-325:
 
 - the Shelly Pro 3EM at the grid entry over MQTT and its RPC, a snapshot a minute in `grid_reading`,
   `GET /home/energy/grid` (HAS-327);
@@ -47,7 +47,9 @@ planned outage of Tauron.
 - **the sources watched** (HAS-332): the SOLAX dongle and the grid meter silent, a phase of the meter overloaded -
   told on Discord, stored in `source_alert`;
 - **the SolaX cloud** (HAS-329): the backup of the dongle - the SOLAX and its battery from the SolaX Developer Platform
-  every 5 min, served while the dongle is stale - and the alarms of the inverter every 15 min, told on Discord.
+  every 5 min, served while the dongle is stale - and the alarms of the inverter every 15 min, told on Discord;
+- **the SOFAR** (HAS-330): from the Solarman Open API every 5 min (the logger has no local path), a snapshot in
+  `inverter_reading`, `GET /home/energy/inverters/sofar` and `sofar` in `/status`; its faults told on Discord.
 
 **The outages of the grid** - only the inverter knows the grid: the Pro 3EM goes dark with an empty battery, and the
 cluster runs in the house.
@@ -78,7 +80,7 @@ cluster runs in the house.
   reconciliation still reads it every 5 min. A source never heard since the start counts from the start. One alert a pass
   naming every silent source, a reminder every `energy.availability.reminder-every` (PT1H), an info at its return - only
   once it answers again (HAS-296). An alert that did not get through is tried again with every pass; the return names
-  one that never did. The SolaX cloud read is not the dongle; the SOFAR joins with HAS-330.
+  one that never did. The SolaX cloud read is not the dongle; the SOFAR is watched for its faults only (below).
 - **Overload**: a phase current of the grid meter above `energy.grid.phase-current-warn` (22 A; the main fuses are
   3 x 25 A, the board of the inverter 20 A a phase) in every pass for `energy.grid.overload-after` (PT3M) is a
   warning (the level `warn`) naming the phase and the current, once an episode; below for as long, an info ends it.
@@ -106,11 +108,26 @@ cluster runs in the house.
 - **Prepared for the charge task**: the work mode and the result of a command (`setSelfUse`, `requestStatus`) - no
   write is sent by this service yet; the fields of the body are the charge task's to verify.
 
-The SOFAR is not known yet. What comes next:
+**The SOFAR** (HAS-330) - the Solarman Open API with the application Solarman granted the owner (the logger runs its
+MQTT firmware, tcp/8899 is closed - there is no local path):
+
+- **The token**: `POST /account/v1.0/token?appId=` with the app secret, the e-mail of the account and the lowercase
+  SHA-256 of its password; a personal token is enough. Held in memory, taken anew a day before it expires (60 days) and
+  once when a call says it is invalid (code 2101019). Every answer is HTTP 200 with `success`; a failure is logged with
+  its code alone. Logbook masks the secret, the account, the password, the tokens, the uid and the appId.
+- **The reading**: `device/v1.0/currentData` for the serial of the registry every `energy.sofar.cloud.interval` (PT5M;
+  the logger uploads every 5 min) - the panels together and per string, the AC side per phase, the frequency, the state
+  of the inverter and its faults **in the words of the cloud**, the temperature of the power module, the production
+  today and in total; `measuredAt` is the time the logger collected it. Stale once collected longer ago than
+  `energy.sofar.cloud.stale-after` (PT15M) or after a failed read. Verified against the cloud on 2026-11-02.
+- **The faults**: decided after every fresh reading - a new fault is an alert naming its words, one the reading no
+  longer has an info; kept in `source_alert` (source `sofar`, kind `alarm`) once told. The inverter's own grid counters
+  are not read - the balance of the house is the Pro 3EM's.
+
+What comes next:
 
 | Task | What |
 |---|---|
-| HAS-330 | the SOFAR inverter |
 | HAS-331 | the balance of the grid and its history |
 
 # Run locally
@@ -149,6 +166,10 @@ The SOFAR is not known yet. What comes next:
   `energy`) and `solax-plant-id` (the plant, from the manifest) - mandatory; `energy.solax.cloud.base-url`
   (`https://openapi-eu.solaxcloud.com`), `interval` (PT5M), `alarm-interval` (PT15M), `stale-after` (PT15M), each 5 - 60
   min. The battery serial is the registry's (`batterySerialNumber` of the inverter binding).
+- **The SOFAR** (HAS-330): `solarman-app-id`, `solarman-app-secret`, `solarman-email` and `solarman-password-sha256` (the
+  lowercase SHA-256 of the password of the account; the secret `energy`) - mandatory; `energy.sofar.cloud.base-url`
+  (`https://globalapi.solarmanpv.com`), `interval` (PT5M, 1 - 60 min), `stale-after` (PT15M, 5 - 60 min). The serial
+  of the inverter is the registry's (`serialNumber` of the inverter binding, brand `sofar`).
 
 # API
 
@@ -156,9 +177,9 @@ Under the base path `/home/energy`, routed by the gateway by path, every method.
 
 | Method | Path | Answer |
 |---|---|---|
-| `GET` | `/home/energy/status` | an object (since HAS-334; a bare list of the sources before): `sources` - every source of energy in the order of the dashboard - `meter`, `solax`, `sofar`, `solaxCloud` - with `reachable`: `true`, `false`, or `null` while the service knows nothing of it (the SOFAR until its task; the SOLAX is the last read of its dongle, `solaxCloud` the last read of the SolaX cloud - HAS-329), and `lastReadingAt` (house time) once a reading came; the meter is `false` after its last will on the broker. `grid` - `state` `present` or `lost` as the SOLAX sees it, `null` while not known (after a start, before two reads agree), and `since` (house time) once known |
+| `GET` | `/home/energy/status` | an object (since HAS-334; a bare list of the sources before): `sources` - every source of energy in the order of the dashboard - `meter`, `solax`, `sofar`, `solaxCloud` - with `reachable`: `true`, `false`, or `null` while the service knows nothing of it (the SOLAX is the last read of its dongle, `solaxCloud` the last read of the SolaX cloud - HAS-329, `sofar` whether the last read of the Solarman cloud brought a reading collected within 15 min, its `lastReadingAt` the time the logger collected it - HAS-330), and `lastReadingAt` (house time) once a reading came; the meter is `false` after its last will on the broker. `grid` - `state` `present` or `lost` as the SOLAX sees it, `null` while not known (after a start, before two reads agree), and `since` (house time) once known |
 | `GET` | `/home/energy/grid` | the grid meter now: `phases` `a` / `b` / `c` (`voltage` V, `current` A, `activePower` W, `apparentPower` VA, `powerFactor`, `frequency` Hz), `totalActivePower` (W, positive while the house takes from the grid, negative while it returns), `importEnergy` / `exportEnergy` (kWh since the meter was set up), `direction` (`import`, `export`, `idle` within 20 W), `measuredAt` (house time), `stale` (no readings, older than 2 min, or the meter off the broker). What the meter did not send is left out; before the first readings only `{"stale": true}` |
-| `GET` | `/home/energy/inverters` | every inverter of the device registry: `id` (`solax`, `sofar`), `registryId`, `name`, `room`, and from its last reading `runMode` (`waiting`, `checking`, `normal`, `fault`, `permanent fault`, `updating`, `eps check`, `eps`, `self test`, `idle`, `standby`), `acPower` (W), `phases` `a` / `b` / `c` (`voltage`, `current`, `activePower`), `pvPower` (W of the panels together), `pv` `pv1` / `pv2` (`voltage`, `current`, `power` of each string; 0 at night), `gridPower` (W the meter of the SOLAX measures at the grid, positive while the house takes from it - the grid itself is `/grid`), `frequency`, `powerFactor`, `temperature` (°C), `dailyYield` / `totalYield` (kWh), `measuredAt`, `stale` (no reading, older than 1 min, or the last read failed), `source` (`local` - the dongle, or `cloud` - the SolaX cloud while the dongle is stale, without `runMode` and `gridPower`; left out without a reading). The SOFAR answers its registry entry and `stale` until its task. `503 REGISTRY_UNAVAILABLE` until the registry was read once |
+| `GET` | `/home/energy/inverters` | every inverter of the device registry: `id` (`solax`, `sofar`), `registryId`, `name`, `room`, and from its last reading `runMode` (the SOLAX: `waiting`, `checking`, `normal`, `fault`, `permanent fault`, `updating`, `eps check`, `eps`, `self test`, `idle`, `standby`), `state` and `faults` (the SOFAR: its state and its faults in the words of the Solarman cloud - `Grid connected`, `[]` without a fault), `acPower` (W), `phases` `a` / `b` / `c` (`voltage`, `current`, `activePower`), `pvPower` (W of the panels together), `pv` `pv1` / `pv2` (`voltage`, `current`, `power` of each string; 0 at night), `gridPower` (W the meter of the SOLAX measures at the grid, positive while the house takes from it - the grid itself is `/grid`), `frequency`, `powerFactor`, `temperature` (°C), `dailyYield` / `totalYield` (kWh), `measuredAt`, `stale` (no reading, older than 1 min, or the last read failed), `source` (`local` - the dongle, or `cloud` - the SolaX cloud while the dongle is stale, without `runMode` and `gridPower`; `solarman-cloud` for the SOFAR, `measuredAt` the time its logger collected the reading, stale after 15 min, without `gridPower` and `powerFactor`; left out without a reading). An inverter without a reading answers its registry entry and `stale`. `503 REGISTRY_UNAVAILABLE` until the registry was read once |
 | `GET` | `/home/energy/inverters/{id}` | one inverter by its brand, as above; `404 NOT_FOUND_INVERTER` for another id or a brand not registered |
 | `GET` | `/home/energy/battery` | the battery of the SOLAX now: `soc` (%), `health` (SOH %), `power` (W, positive while charging, negative while discharging), `direction` (`charging`, `discharging`, `idle` within 20 W), `voltage`, `current`, `temperature`, `cycles`, `remainingKwh` (the SOC of the usable capacity), `chargedToday` / `dischargedToday` (kWh), `measuredAt`, `stale`, `source` (`local` or `cloud` as for the inverters; the cloud without `chargedToday` / `dischargedToday`). Before the first reading only `{"stale": true}` |
 | `GET` | `/home/energy/outages?from=&to=` | the outages of the grid that started in `[from, to)` (house times, ISO `2026-10-01T00:00:00`), the oldest first: `startedAt`, `endedAt` (left out while it lasts), `socAtStart`, `socAtEnd`, `lowestSoc` (%; a value not known left out). `400 INVALID_RANGE` when `from` is not before `to` or they are more than 366 days apart, `400` without either |
