@@ -7,7 +7,8 @@ import org.springframework.data.relational.core.mapping.Table;
 import java.time.LocalDateTime;
 
 //A row of battery_reading (V3, HAS-328): the battery of the SOLAX once a minute, written only when a value changed.
-//soc %, power W (negative while discharging), voltage V, current A (negative while discharging), temperature °C
+//soc %, power W (negative while discharging), voltage V, current A (negative while discharging), temperature °C;
+//chargedToday, dischargedToday - kWh the SOLAX counts for the battery today (V8, HAS-331), what closes a day
 @Table("battery_reading")
 public record BatteryReadingEntity(
     @Id Long id,
@@ -16,6 +17,8 @@ public record BatteryReadingEntity(
     @Column("power") Double power,
     @Column("voltage") Double voltage,
     @Column("current") Double current,
-    @Column("temperature") Double temperature
+    @Column("temperature") Double temperature,
+    @Column("charged_today") Double chargedToday,
+    @Column("discharged_today") Double dischargedToday
 ) {
 }

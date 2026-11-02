@@ -3,10 +3,12 @@ package cloud.cholewa.energy.solaxcloud;
 import cloud.cholewa.energy.registry.InverterRegistry;
 import cloud.cholewa.energy.solax.SolaxSamples;
 import cloud.cholewa.home.model.InverterBrand;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Optional;
 
@@ -24,7 +26,13 @@ class SolaxCloudReaderTest {
     private final InverterRegistry registry = mock(InverterRegistry.class);
     private final SolaxCloudClient client = mock(SolaxCloudClient.class);
     private final SolaxCloudTracker tracker = new SolaxCloudTracker();
-    private final SolaxCloudReader reader = new SolaxCloudReader(registry, client, tracker, clock);
+    private final CloudDays cloudDays = new CloudDays();
+    private final SolaxCloudReader reader = new SolaxCloudReader(registry, client, tracker, cloudDays, clock);
+
+    @BeforeEach
+    void setUp() {
+        when(client.plant()).thenReturn(Mono.just(CloudSamples.plant()));
+    }
 
     @Test
     void should_read_the_inverter_and_its_battery_of_the_registry() {
@@ -62,5 +70,33 @@ class SolaxCloudReaderTest {
 
         verify(client, never()).inverter(anyString());
         assertThat(tracker.current().reachable()).isNull();
+    }
+
+    //HAS-331: the day as the cloud counts it - the yield of the inverter, the energy of the meter of the plant
+    @Test
+    void should_hold_the_day_of_the_cloud() {
+        when(registry.of(InverterBrand.SOLAX)).thenReturn(Optional.of(SolaxSamples.solax("192.0.2.158")));
+        when(client.inverter(SolaxSamples.SERIAL)).thenReturn(Mono.just(CloudSamples.inverter()));
+        when(client.battery(SolaxSamples.SERIAL)).thenReturn(Mono.just(CloudSamples.battery()));
+
+        reader.read().as(StepVerifier::create).verifyComplete();
+
+        assertThat(cloudDays.of(LocalDate.of(2026, 11, 1)))
+            .contains(new CloudDays.CloudDay(4.0, 11.2, 0.0));
+    }
+
+    //the plant is the cross-check only: its failure neither marks the cloud unreachable nor drops the answers
+    @Test
+    void should_stay_reachable_when_only_the_plant_fails() {
+        when(registry.of(InverterBrand.SOLAX)).thenReturn(Optional.of(SolaxSamples.solax("192.0.2.158")));
+        when(client.inverter(SolaxSamples.SERIAL)).thenReturn(Mono.just(CloudSamples.inverter()));
+        when(client.battery(SolaxSamples.SERIAL)).thenReturn(Mono.just(CloudSamples.battery()));
+        when(client.plant()).thenReturn(Mono.error(new SolaxCloudException("The SolaX cloud answered code 10500")));
+
+        reader.read().as(StepVerifier::create).verifyComplete();
+
+        assertThat(tracker.current().reachable()).isTrue();
+        assertThat(cloudDays.of(LocalDate.of(2026, 11, 1)))
+            .contains(new CloudDays.CloudDay(4.0, null, null));
     }
 }

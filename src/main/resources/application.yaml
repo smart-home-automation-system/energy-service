@@ -116,6 +116,15 @@ energy:
   grid:
     phase-current-warn: 22
     overload-after: PT3M
+  # the readings kept for the history (HAS-331): older rows are deleted every night; the days of energy_day are kept
+  # forever. A bare number is days
+  history:
+    retention: 730d
+  # the net-metering with Tauron (HAS-331), in kWh: an exported kWh credited at the ratio of the agreement (0.7, owner
+  # 2026-10-23); the billing year starts in period-start (9 - the installation started in September 2020, owner 2026-11-02)
+  settlement:
+    ratio: 0.7
+    period-start: 9
 
 # the notifications of the outages (HAS-334): the exchange is on the same broker as spring.rabbitmq.*, on its own
 # virtual host - a second connection (NotificationRabbitConfig); env is one of the two headers it routes by.

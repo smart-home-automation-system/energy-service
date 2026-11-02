@@ -3,6 +3,8 @@ package cloud.cholewa.energy.error;
 import lombok.Getter;
 import org.springframework.http.HttpStatus;
 
+import java.util.List;
+
 //A request the API refuses (HAS-328): the status says whose problem it is, the error names the cause, the message is
 //answered as details
 @Getter
@@ -24,6 +26,11 @@ public class EnergyException extends RuntimeException {
 
     public static EnergyException invalidRange(final String message) {
         return new EnergyException(HttpStatus.BAD_REQUEST, EnergyError.INVALID_RANGE, message);
+    }
+
+    public static EnergyException unknownMetric(final List<String> known) {
+        return new EnergyException(HttpStatus.BAD_REQUEST, EnergyError.UNKNOWN_METRIC,
+            "The metric is one of " + String.join(", ", known));
     }
 
     public static EnergyException registryUnavailable() {
