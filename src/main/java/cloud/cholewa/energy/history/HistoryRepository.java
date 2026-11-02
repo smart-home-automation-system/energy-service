@@ -9,7 +9,10 @@ import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 //One stored metric from "from" up to, not including, "to", in buckets of "bucketSeconds", oldest first - the query of the
 //weather history (HAS-238). measured_at is the wall-clock time of the house without a zone, and the epoch of such a value
@@ -34,6 +37,26 @@ public class HistoryRepository {
           AND %2$s IS NOT NULL%3$s
         GROUP BY at
         ORDER BY at
+        """;
+
+    //one part of a sum, numbered: its buckets, and its last value before the range as a row without "at"
+    private static final String SUM_PART = """
+        (SELECT %4$d AS part,
+                TIMESTAMP 'epoch'
+                    + floor(extract(epoch FROM measured_at) / :bucketSeconds) * :bucketSeconds * INTERVAL '1 second' AS at,
+                round(avg(%2$s)::numeric, 2) AS avg
+         FROM %1$s
+         WHERE measured_at >= :from
+           AND measured_at < :to
+           AND %2$s IS NOT NULL%3$s
+         GROUP BY at)
+        UNION ALL
+        (SELECT %4$d AS part, NULL::timestamp AS at, %2$s::numeric AS avg
+         FROM %1$s
+         WHERE measured_at < :from
+           AND %2$s IS NOT NULL%3$s
+         ORDER BY measured_at DESC
+         LIMIT 1)
         """;
 
     private static final String LAST_BEFORE = """
@@ -143,6 +166,39 @@ public class HistoryRepository {
         return ofInverter(spec, inverterId)
             .map(row -> row.get(VALUE, BigDecimal.class))
             .one();
+    }
+
+    //a stored value of a sum with the registry id of its inverter (null for a value of no inverter)
+    public record SumPart(StoredValue value, Long inverterId) {
+    }
+
+    //one row of a sum: the number of its part, the start of a bucket - null for the value before the range - its average
+    public record SumRow(int part, LocalDateTime at, BigDecimal avg) {
+    }
+
+    //every part of a sum in one statement (the /history of a month through the ingress, HAS-331: eight queries one after
+    //the other took 0.5 - 0.8 s, one round trip to the managed database is what costs)
+    public Flux<SumRow> findSum(final List<SumPart> parts, final LocalDateTime from, final LocalDateTime to,
+                                final long bucketSeconds) {
+        final String sql = IntStream.range(0, parts.size())
+            .mapToObj(index -> SUM_PART.formatted(parts.get(index).value().table(), parts.get(index).value().column(),
+                parts.get(index).inverterId() == null ? "" : "\n           AND inverter_id = :inverter" + index, index))
+            .collect(Collectors.joining("UNION ALL\n"));
+        DatabaseClient.GenericExecuteSpec spec = databaseClient.sql(sql)
+            .bind("bucketSeconds", bucketSeconds)
+            .bind(FROM, from)
+            .bind(TO, to);
+        for (int index = 0; index < parts.size(); index++) {
+            if (parts.get(index).inverterId() != null) {
+                spec = spec.bind("inverter" + index, parts.get(index).inverterId());
+            }
+        }
+        return spec
+            .map(row -> new SumRow(
+                Optional.ofNullable(row.get("part", Integer.class)).orElseThrow(),
+                row.get("at", LocalDateTime.class),
+                row.get("avg", BigDecimal.class)))
+            .all();
     }
 
     //the statement bound to the inverter of a value of inverter_reading; as it is for a value of no inverter

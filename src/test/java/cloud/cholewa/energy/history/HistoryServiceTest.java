@@ -20,8 +20,6 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -72,13 +70,16 @@ class HistoryServiceTest {
     //house-load = pv-solax + pv-sofar + grid-power - battery-power, the SOFAR carried from before the range
     @Test
     void should_sum_the_house_load_of_its_parts() {
-        when(repository.findHistory(eq(StoredValue.PV_SOLAX), eq(SolaxSamples.ID), any(), any(), anyLong()))
-            .thenReturn(Flux.just(point(FROM, "1000")));
-        when(repository.findLastBefore(StoredValue.PV_SOFAR, 135L, FROM)).thenReturn(Mono.just(new BigDecimal("200")));
-        when(repository.findHistory(eq(StoredValue.GRID_POWER), isNull(), any(), any(), anyLong()))
-            .thenReturn(Flux.just(point(FROM, "-300")));
-        when(repository.findHistory(eq(StoredValue.BATTERY_POWER), isNull(), any(), any(), anyLong()))
-            .thenReturn(Flux.just(point(FROM, "400")));
+        when(repository.findSum(List.of(
+                new HistoryRepository.SumPart(StoredValue.PV_SOLAX, SolaxSamples.ID),
+                new HistoryRepository.SumPart(StoredValue.PV_SOFAR, 135L),
+                new HistoryRepository.SumPart(StoredValue.GRID_POWER, null),
+                new HistoryRepository.SumPart(StoredValue.BATTERY_POWER, null)), FROM, TO, 300))
+            .thenReturn(Flux.just(
+                new HistoryRepository.SumRow(0, FROM, new BigDecimal("1000")),
+                new HistoryRepository.SumRow(1, null, new BigDecimal("200")),
+                new HistoryRepository.SumRow(2, FROM, new BigDecimal("-300")),
+                new HistoryRepository.SumRow(3, FROM, new BigDecimal("400"))));
 
         service.history("house-load", FROM, TO).as(StepVerifier::create)
             .assertNext(reply -> assertThat(reply.points()).containsExactly(
@@ -86,16 +87,16 @@ class HistoryServiceTest {
             .verifyComplete();
     }
 
-    //a sum with a part of an inverter the registry does not have: no points, never a partial sum
+    //a sum with a part of an inverter the registry does not have: no points, never a partial sum - and no query
     @Test
     void should_answer_no_sum_without_one_of_its_inverters() {
         when(registry.of(InverterBrand.SOFAR)).thenReturn(Optional.empty());
-        when(repository.findHistory(eq(StoredValue.PV_SOLAX), any(), any(), any(), anyLong()))
-            .thenReturn(Flux.just(point(FROM, "1000")));
 
         service.history("pv-power", FROM, TO).as(StepVerifier::create)
             .assertNext(reply -> assertThat(reply.points()).isEmpty())
             .verifyComplete();
+
+        verify(repository, never()).findSum(any(), any(), any(), anyLong());
     }
 
     @Test

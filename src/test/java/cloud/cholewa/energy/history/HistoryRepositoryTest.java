@@ -25,6 +25,7 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -106,6 +107,26 @@ class HistoryRepositoryTest {
                 new HistoryReply.Point(T0, new BigDecimal("1500.00"), new BigDecimal("1000"), new BigDecimal("2000")),
                 new HistoryReply.Point(T0.plusMinutes(5), new BigDecimal("-500.00"), new BigDecimal("-500"),
                     new BigDecimal("-500"))))
+            .verifyComplete();
+    }
+
+    //every part of a sum in one statement: its buckets, and its last value before the range as a row without "at"
+    @Test
+    void should_read_every_part_of_a_sum_at_once() {
+        inverter(135, T0.minusHours(1), 300, 1.0);
+        inverter(134, T0.plusMinutes(1), 1000, 4.0);
+        inverter(134, T0.plusMinutes(3), 1200, 4.1);
+        grid(T0.plusMinutes(6), -500, 10.0);
+
+        sut.findSum(List.of(new HistoryRepository.SumPart(StoredValue.PV_SOLAX, 134L),
+                new HistoryRepository.SumPart(StoredValue.PV_SOFAR, 135L),
+                new HistoryRepository.SumPart(StoredValue.GRID_POWER, null)), T0, T0.plusHours(1), 300)
+            .collectList()
+            .as(StepVerifier::create)
+            .assertNext(rows -> assertThat(rows).containsExactlyInAnyOrder(
+                new HistoryRepository.SumRow(0, T0, new BigDecimal("1100.00")),
+                new HistoryRepository.SumRow(1, null, new BigDecimal("300")),
+                new HistoryRepository.SumRow(2, T0.plusMinutes(5), new BigDecimal("-500.00"))))
             .verifyComplete();
     }
 
