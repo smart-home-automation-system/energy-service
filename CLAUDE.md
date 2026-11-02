@@ -10,7 +10,7 @@ repository map and working rules come from the workspace-level context
 repository themselves; Claude's default role here is analysis, code review and security
 review - the owner had Claude implement the scaffold (HAS-325), the grid meter (HAS-327), the
 SOLAX (HAS-328), the outages of the grid (HAS-334), the monitor of the sources (HAS-332), the SolaX cloud (HAS-329),
-the SOFAR (HAS-330) and the balance, history and days (HAS-331), and reviews them in IntelliJ.
+the SOFAR (HAS-330), the balance, history and days (HAS-331) and the production watch (HAS-333), and reviews them in IntelliJ.
 
 ## Role in the system
 
@@ -21,11 +21,12 @@ the SOFAR (HAS-330) and the balance, history and days (HAS-331), and reviews the
 - Calls: the Shelly Pro 3EM over its RPC (`EM.GetStatus`, `EMData.GetStatus`, HAS-327); the dongle of the
   SOLAX over its local API and `database-service` for the inverters of the device registry
   (`GET /home/device/registry?kind=inverter&enabled=true`, HAS-328). The SolaX Developer Platform (HAS-329,
-  `openapi-eu.solaxcloud.com`). The Solarman Open API for the SOFAR (HAS-330, `globalapi.solarmanpv.com`).
+  `openapi-eu.solaxcloud.com`). The Solarman Open API for the SOFAR (HAS-330, `globalapi.solarmanpv.com`). weather-service for the illuminance of the
+  station (HAS-333, `GET /home/weather/current` by k8s DNS).
 - Publishes: the alerts, reminders and infos of the outages of the grid to the exchange `notification` of
   `/notification` (user `notification`, `notification-rabbitmq-password`; HAS-334) - the loss, a low battery and
   the return marked for an SMS; the silence of the SOLAX dongle and the grid meter and the overload of a phase
-  (HAS-332), Discord only; the alarms of the SOLAX from the SolaX cloud (HAS-329); the faults of the SOFAR (HAS-330).
+  (HAS-332), Discord only; the alarms of the SOLAX from the SolaX cloud (HAS-329); the faults of the SOFAR (HAS-330); an inverter that does not produce in the sun (HAS-333).
 - Uses libraries: `cholewa-commons` 1.13.0 (the pooled `ConnectionFactory`, the required
   properties, the scheduler pool and `ScheduledPass`, the error contract, `NotificationConnection` and the
   `...Sms` methods of `NotificationPublisher` - HAS-334), `smart-home-sdk` 1.15.0 (the kind
@@ -289,6 +290,26 @@ the SOFAR (HAS-330) and the balance, history and days (HAS-331), and reviews the
     sum took 0.53 - 0.8 s** (eight queries one after the other, each a round trip to the managed database): since 0.8.1 a sum
     is one statement (`HistoryRepository.findSum`, the parts joined by `UNION ALL`, the value before the range a row
     without `at`).
+- **The inverter that does not produce in the sun** (HAS-333, package `production`) - what is easy to break:
+  - **The metric of the station is the illuminance** (lx, `illuminance` of `GET /home/weather/current`): the WS90 has no
+    solar radiation (W/m2) - checked 2026-11-02, the only other light metric is `uv`. About 25 000 lx at the noon of a sunny
+    day of late October, 5 000 - 6 000 on an overcast one (the SOLAX gave 400 - 600 W then): the default threshold of
+    20 000 lx is a sunny noon in winter. The thresholds are confirmed with the owner on real days (DoD).
+  - `WeatherClient` (`weatherServiceWebClient`, the injected builder, 5 s, the pool limits of the database client): an
+    answer without a numeric value is no illuminance; one weather-service holds for stale is not known - **an unknown
+    input never holds**: the sun never shines then. Its failure is one WARN an hour (`FailureLog`).
+  - `SunCalendar` - the third copy (blinds, light; the commons rule allows three), `commons-suncalc` 3.11, visual rise and
+    set: the civil dawn and dusk are outside the day of the sun. `energy.location.*` from the manifest, mandatory
+    (`cholewa.required-properties`).
+  - `ProductionRules` (pure, `ProductionRulesTest`): low = the sun shines and the PV of a judged inverter is below
+    `min-power`; low in every pass for `silence` opens one alert (opened at the first low pass), any pass not low counts
+    anew; an open one closes with an info at `min-power` or above, sun or not, and reminds every `reminder-every` only in a
+    low pass - never at night.
+  - `ProductionWatch` (every minute, bounded at 50 s): the inverters as `/inverters` answers them - the SolaX cloud
+    standing for a stale dongle; **not judged**: a stale inverter (its availability alert) and the SOLAX in EPS / EPS check
+    (the outage alert); its count starts anew. The counts are in memory; the open rows (`source_alert`, kind `production`,
+    V9 - solax / sofar, no detail) are read every pass, and **the table follows the broker**: a row is written only once its
+    notice was published.
 - **The map of type 33** (`Type33`, pinned by `Type33Test` on `src/test/resources/solax/*.json` - answers of
   2026-10-23 19:52, 2026-10-27 20:49, 2026-10-28 10:27 and 2026-10-29 19:09 with invented dongle and inverter serials;
   the last three compared with SolaxCloud (the last one with the Pro 3EM as well), Developer Platform `v2/device/realtime_data` and `v2/plant/realtime_data`, within one
