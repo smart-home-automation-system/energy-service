@@ -10,8 +10,8 @@ import reactor.netty.resources.ConnectionProvider;
 
 import java.time.Duration;
 
-//The client of weather-service (the illuminance of the station, HAS-333). Built from the injected builder - traced and
-//logged by Logbook - with the timeouts the task asks for (5 s) and the pool limits of the client of database-service
+//The client of weather-service that reads the illuminance of the station for HAS-333. It is built from the injected
+//builder so that Logbook traces and logs it, with timeouts of five seconds and the pool limits of database-service.
 @Configuration
 public class WeatherServiceClientConfig {
 

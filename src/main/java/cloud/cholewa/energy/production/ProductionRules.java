@@ -3,7 +3,6 @@ package cloud.cholewa.energy.production;
 import cloud.cholewa.energy.database.SourceAlertEntity;
 import cloud.cholewa.energy.time.HouseTimes;
 
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Optional;
 
@@ -51,7 +50,7 @@ final class ProductionRules {
             return new Outcome(null, Optional.empty(), Optional.empty(), null);
         }
         final LocalDateTime since = lowSince == null ? now : lowSince;
-        if (Duration.between(since, now).compareTo(properties.silence()) < 0) {
+        if (HouseTimes.between(since, now).compareTo(properties.silence()) < 0) {
             return new Outcome(since, Optional.empty(), Optional.empty(), null);
         }
         return new Outcome(since, Optional.of(new SourceAlertEntity(null, inverter.source(), KIND, since, now, null, null)),
