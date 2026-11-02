@@ -124,16 +124,37 @@ MQTT firmware, tcp/8899 is closed - there is no local path):
   longer has an info; kept in `source_alert` (source `sofar`, kind `alarm`) once told. The inverter's own grid counters
   are not read - the balance of the house is the Pro 3EM's.
 
-What comes next:
+**The balance, the history and the days** (HAS-331):
 
-| Task | What |
-|---|---|
-| HAS-331 | the balance of the grid and its history |
+- **The sign convention of the house** (pinned by `MetricTest`, `FlowsServiceTest`): every power is W; the grid is
+  positive while the house takes from it, negative while it returns; the battery is positive while it charges,
+  negative while it discharges; the PV powers are never negative. House load = PV of both inverters + grid - battery.
+- **Now** (`/flows`): from what `/grid`, `/inverters` and `/battery` answer - an input is known when it has a value and is
+  not stale, and what depends on an input not known is left out, never 0. The day so far: the daily counters of the
+  inverters and the battery, the counters of the grid meter now minus at midnight (read from `grid_reading`, held for the
+  day from five minutes after midnight).
+- **The history** (`/history`): the rules of the hot-water and weather history (`HistoryRange`, a copy - the fourth, by
+  the owner's choice) - buckets of 5 min, 30 min or 2 h by the length of the range, at most 31 days, avg/min/max per
+  bucket. A row is stored only after a change: a bucket without a point is a value that did not change. The sums
+  (`pv-power`, `house-load`) carry each part from its last reading and have the average only. One query at a time (the
+  pool has 2), a month in about 0.15 s on the rehearsal.
+- **The days** (`energy_day`, V8): closed from 00:15 of the next day (a pass every hour, the days a downtime missed after
+  it, at most 31 days back) and never changed - the production of each inverter and the battery energies from their daily
+  counters (the highest value after 00:30 - the inverter resets them by its own clock), imported / exported from the
+  counters of the grid meter at both midnights (not known on the first day of the service), the house load,
+  self-consumption, grid share, and the cross-check of the SolaX cloud (the yield of the SOLAX, the energy of its meter)
+  when it was read that day - in memory, lost by a restart.
+- **The settlement** (`/months`): net-metering, the Polish "system opustów", never money - an exported kWh credited at
+  `energy.settlement.ratio` (0.7), the credit of a month usable in it and the eleven after, the imports drawn from the
+  oldest credit first, the rest bought; by whole months from the first closed day - the house's estimate, not the
+  invoice. The billing year starts in `energy.settlement.period-start` (September).
+- **The retention**: every night at 03:20 the readings older than `energy.history.retention` (730 days) are deleted in
+  batches of 5000, never the latest row of a table or an inverter; the days are kept forever.
 
 # Run locally
 
-- Build: `mvn verify` (JDK 21) - no Docker needed until the first test of PostgreSQL-only SQL
-  (Testcontainers, the dependencies are in the pom already).
+- Build: `mvn verify` (JDK 21) - **needs a Docker** since HAS-331: `HistoryRepositoryTest` runs the PostgreSQL-only SQL
+  of the history, the days and the retention in Testcontainers (it fails without a Docker, it is not skipped).
 - Ports: local profile `6014` (management `8014`); in the deployed `home` profile the service
   listens on `6200` and Actuator on `8200` like every service in the cluster. The ingress routes
   only 6200, so Actuator is reachable inside the cluster only - where the Kubernetes probes hit
@@ -170,6 +191,8 @@ What comes next:
   lowercase SHA-256 of the password of the account; the secret `energy`) - mandatory; `energy.sofar.cloud.base-url`
   (`https://globalapi.solarmanpv.com`), `interval` (PT5M, 1 - 60 min), `stale-after` (PT15M, 5 - 60 min). The serial
   of the inverter is the registry's (`serialNumber` of the inverter binding, brand `sofar`).
+- **The history and the days** (HAS-331): `energy.history.retention` (730d; a bare number is days, 31 - 3650 days),
+  `energy.settlement.ratio` (0.7, above 0 to 1) and `energy.settlement.period-start` (9, 1 - 12).
 
 # API
 
@@ -183,6 +206,10 @@ Under the base path `/home/energy`, routed by the gateway by path, every method.
 | `GET` | `/home/energy/inverters/{id}` | one inverter by its brand, as above; `404 NOT_FOUND_INVERTER` for another id or a brand not registered |
 | `GET` | `/home/energy/battery` | the battery of the SOLAX now: `soc` (%), `health` (SOH %), `power` (W, positive while charging, negative while discharging), `direction` (`charging`, `discharging`, `idle` within 20 W), `voltage`, `current`, `temperature`, `cycles`, `remainingKwh` (the SOC of the usable capacity), `chargedToday` / `dischargedToday` (kWh), `measuredAt`, `stale`, `source` (`local` or `cloud` as for the inverters; the cloud without `chargedToday` / `dischargedToday`). Before the first reading only `{"stale": true}` |
 | `GET` | `/home/energy/outages?from=&to=` | the outages of the grid that started in `[from, to)` (house times, ISO `2026-10-01T00:00:00`), the oldest first: `startedAt`, `endedAt` (left out while it lasts), `socAtStart`, `socAtEnd`, `lowestSoc` (%; a value not known left out). `400 INVALID_RANGE` when `from` is not before `to` or they are more than 366 days apart, `400` without either |
+| `GET` | `/home/energy/flows` | the balance now (HAS-331): `production`, `solaxPv`, `sofarPv`, `gridPower`, `batteryPower`, `houseLoad` (W, the sign convention above); `today` - `production`, `imported`, `exported`, `charged`, `discharged`, `houseLoad` (kWh), `selfConsumption`, `gridShare` (0..1); `inputs` - `grid`, `solax`, `sofar`, `battery`, each with `measuredAt` and `stale`. What depends on an input not known is left out |
+| `GET` | `/home/energy/history?metric=&from=&to=` | one metric in `[from, to)` (house times, at most 31 days) in buckets: `metric`, `from`, `to`, `bucketSeconds` (300, 1800 or 7200 by the length), `points` - `at`, `avg`, `min`, `max` (a sum the average only). Metrics: `grid-power`, `grid-import-energy`, `grid-export-energy` (the counters, kWh - max - min of a bucket is its energy), `pv-solax`, `pv-sofar`, `battery-power`, `battery-soc`, `pv-power`, `house-load`. `400 UNKNOWN_METRIC` naming the metrics there are, `400 INVALID_RANGE`, `503 REGISTRY_UNAVAILABLE` for a metric of an inverter before the registry was read |
+| `GET` | `/home/energy/days?from=&to=` | the closed days of `[from, to]` (ISO dates, at most 366 days): `day`, `solaxYield`, `sofarYield`, `production`, `imported`, `exported`, `charged`, `discharged`, `houseLoad` (kWh), `selfConsumption`, `gridShare` (0..1), `cloudYield`, `cloudImported`, `cloudExported` (the SolaX cloud); a value not established left out. `400 INVALID_RANGE` |
+| `GET` | `/home/energy/months?year=` | the billing year from `period-start` of `year` (2026: September 2026 - August 2027): `year`, `from`, `to` (`yyyy-MM`), `ratio`, `months` - `month`, `days` (closed), `production`, `imported`, `exported`, `houseLoad` (left out without a day), `credited`, `drawn`, `bought`, `expired`, `stored` (kWh) |
 
 # Database
 
@@ -194,7 +221,7 @@ services needs `GRANT USAGE, CREATE ON SCHEMA public` before the first start, or
   creates the history table of Flyway, which proves the grant.
 - `V2` (HAS-327) `grid_reading`: the grid meter once a minute, a row only when a value changed - the power
   per phase and in total (W, signed), the energies taken and returned (kWh), the voltage per phase. Kept
-  until the retention of HAS-331.
+  730 days (the retention of HAS-331).
 - `V3` (HAS-328) `inverter_reading` (an inverter by its registry id: the PV power together and per string, the AC power, the run mode in words, the temperature, the daily yield) and `battery_reading` (SOC,
   power, voltage, current, temperature): once a minute, a row only when a value changed.
 - `V4` (HAS-334) `grid_outage`: one row an outage of the grid - its start and end (`ended_at` NULL while it
@@ -207,3 +234,9 @@ services needs `GRANT USAGE, CREATE ON SCHEMA public` before the first start, or
 - `V6` (HAS-329) `source_alert.detail`: the alarms of the SOLAX in the same table - kind `alarm`, source `solax`, `detail`
   `<error code>|<start time>|<name>` (required for an alarm, null for the other kinds - checked); at most one open row a
   source, kind and detail.
+- `V7` (HAS-330) the faults of the SOFAR in the same table - source `sofar`, kind `alarm`, `detail` the words of the
+  fault; both checks take the new source (the SOFAR is never `silent`).
+- `V8` (HAS-331) `battery_reading.charged_today` / `discharged_today` (the daily counters of the SOLAX battery) and
+  `energy_day`: one row a closed day, keyed by the date - the totals of the day in kWh, the self-consumption and the grid
+  share, the cross-check of the SolaX cloud and the time it was closed; kept forever. The readings of V2 and V3 are kept
+  730 days (`energy.history.retention`).
