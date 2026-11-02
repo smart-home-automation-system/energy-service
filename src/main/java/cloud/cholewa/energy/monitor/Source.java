@@ -4,7 +4,8 @@ import java.util.Arrays;
 import java.util.Optional;
 
 //What the monitor of the sources watches (HAS-332), with the names source_alert keeps: the SOLAX dongle and the grid
-//meter for silence, each phase of the grid meter for an overload. The SOFAR joins with HAS-330
+//meter for silence, each phase of the grid meter for an overload. The SOFAR is watched for its faults only (HAS-330,
+//SofarFaultWatch) - never for silence
 enum Source {
 
     SOLAX("solax", Kind.SILENT, "the SOLAX dongle"),

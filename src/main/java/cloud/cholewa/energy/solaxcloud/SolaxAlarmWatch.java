@@ -68,7 +68,8 @@ public class SolaxAlarmWatch {
         return solaxCloudClient.alarms(true)
             .doOnNext(page -> failureLog.succeeded(WHAT))
             .onErrorResume(failure -> Mono.fromRunnable(() -> failureLog.failed(WHAT, failure)))
-            .flatMap(page -> sourceAlertRepository.findByClosedAtIsNullAndKindIn(List.of(AlarmRules.KIND))
+            .flatMap(page -> sourceAlertRepository.findByClosedAtIsNullAndSourceAndKind(AlarmRules.SOURCE,
+                    AlarmRules.KIND)
                 .collectList()
                 .flatMap(held -> act(AlarmRules.decide(records(page), held,
                     LocalDateTime.now(clock).truncatedTo(ChronoUnit.MICROS))))

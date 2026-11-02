@@ -74,7 +74,12 @@ class EnergyServiceApplicationTest {
         assertThat(required(5)).containsExactly("energy.solax.cloud.client-id", "solax-client-id");
         assertThat(required(6)).containsExactly("energy.solax.cloud.client-secret", "solax-client-secret");
         assertThat(required(7)).containsExactly("energy.solax.cloud.plant-id", "solax-plant-id");
-        assertThat(applicationContext.getEnvironment().getProperty("cholewa.required-properties[8].property")).isNull();
+        //HAS-330: the application Solarman granted the owner and the account of the plant (the secret energy)
+        assertThat(required(8)).containsExactly("energy.sofar.cloud.app-id", "solarman-app-id");
+        assertThat(required(9)).containsExactly("energy.sofar.cloud.app-secret", "solarman-app-secret");
+        assertThat(required(10)).containsExactly("energy.sofar.cloud.email", "solarman-email");
+        assertThat(required(11)).containsExactly("energy.sofar.cloud.password-sha256", "solarman-password-sha256");
+        assertThat(applicationContext.getEnvironment().getProperty("cholewa.required-properties[12].property")).isNull();
     }
 
     //owner, 2026-11-01: Bat Power Low (17) is never told - the battery at its floor, almost every day

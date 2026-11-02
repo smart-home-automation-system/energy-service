@@ -6,10 +6,11 @@ import org.zalando.logbook.BodyFilter;
 import static org.assertj.core.api.Assertions.assertThat;
 
 //what Logbook may not write of the SolaX cloud (HAS-329): the token of an answer, the secret of the token request, the
-//token an invalid-token answer quotes back
+//token an invalid-token answer quotes back; of the Solarman cloud (HAS-330): the secret, the account, the password, the
+//tokens and the uid (a number), the appId of the query
 class LogbookConfigTest {
 
-    private final BodyFilter filter = new LogbookConfig().solaxCloudBodyFilter();
+    private final BodyFilter filter = new LogbookConfig().maskingBodyFilter();
 
     @Test
     void should_mask_the_token_the_cloud_gives() {
@@ -32,6 +33,38 @@ class LogbookConfigTest {
             {"code":10402,"message":"Invalid access token: a1b2c3"}"""))
             .isEqualTo("""
                 {"code":10402,"message":"Invalid access token: XXX"}""");
+    }
+
+    //HAS-330: the token request of the Solarman cloud is JSON - the secret, the account and the SHA-256 of the password
+    @Test
+    void should_mask_the_solarman_token_request() {
+        assertThat(filter.filter("application/json", """
+            {"appSecret":"s3cr3t","email":"owner@example.com","password":"5e884898da28047151d0e56f8dc6292773603d0d6aabbdd6"}"""))
+            .doesNotContain("s3cr3t").doesNotContain("owner@example.com").doesNotContain("5e884898");
+    }
+
+    @Test
+    void should_mask_the_tokens_and_the_account_of_the_solarman_answer() {
+        assertThat(filter.filter("application/json", """
+            {"access_token":"a1b2c3","token_type":"bearer","refresh_token":"d4e5f6","expires_in":"5183999","uid":77700777,
+             "success":true}"""))
+            .doesNotContain("a1b2c3").doesNotContain("d4e5f6").doesNotContain("77700777")
+            .contains("\"expires_in\":\"5183999\"");
+    }
+
+    //the appId travels in the query of the token request
+    @Test
+    void should_mask_the_solarman_app_id_of_the_query() {
+        assertThat(new LogbookConfig().solarmanQueryFilter().filter("appId=2025123456&language=en"))
+            .isEqualTo("appId=XXX&language=en");
+    }
+
+    //the data of the SOFAR is not touched
+    @Test
+    void should_leave_the_data_of_the_sofar_alone() {
+        assertThat(filter.filter("application/json", """
+            {"deviceSn":"SH1234567890ABCDEFGH","dataList":[{"key":"PVTP","value":"200.00","name":"PV Total Power"}]}"""))
+            .contains("SH1234567890ABCDEFGH").contains("\"value\":\"200.00\"");
     }
 
     @Test

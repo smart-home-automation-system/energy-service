@@ -200,10 +200,10 @@ class EnergyControllerTest {
         pv.put("pv1", new PvReply(642.1, 1.4, 897.0));
         pv.put("pv2", new PvReply(272.8, 1.4, 385.0));
         when(inverterService.inverters()).thenReturn(Mono.just(List.of(
-            new InverterReply("solax", 134L, "SOLAX inverter", "garage", RunMode.PERMANENT_FAULT, 1755.0, phases,
+            new InverterReply("solax", 134L, "SOLAX inverter", "garage", RunMode.PERMANENT_FAULT, null, null, 1755.0, phases,
                 1282.0, pv, 1804.0, 50.01, 0.95, 48.0, 38.6, 4510.6, LocalDateTime.of(2026, 10, 27, 20, 49), false,
                 "local"),
-            new InverterReply("sofar", 135L, "SOFAR inverter", "boiler", null, null, null, null, null, null, null,
+            new InverterReply("sofar", 135L, "SOFAR inverter", "boiler", null, null, null, null, null, null, null, null, null,
                 null, null, null, null, null, true, null))));
 
         webTestClient.get().uri("/inverters")
@@ -224,6 +224,29 @@ class EnergyControllerTest {
                    "totalYield": 4510.6, "measuredAt": "2026-10-27T20:49:00", "stale": false, "source": "local"},
                   {"id": "sofar", "registryId": 135, "name": "SOFAR inverter", "room": "boiler", "stale": true}
                 ]""", JsonCompareMode.STRICT);
+    }
+
+    //HAS-330: the SOFAR with its state and faults in words - an empty list when it has none - and source solarman-cloud
+    @Test
+    void should_answer_the_sofar_with_its_state_and_faults() {
+        final Map<String, PvReply> pv = new LinkedHashMap<>();
+        pv.put("pv1", new PvReply(356.0, 0.77, 270.0));
+        pv.put("pv2", new PvReply(0.0, 0.0, 0.0));
+        when(inverterService.inverter("sofar")).thenReturn(Mono.just(new InverterReply("sofar", 135L,
+            "SOFAR inverter", "boiler", null, "Grid connected", List.of(), 270.0, null, 200.0, pv, null, 49.99, null,
+            32.0, 0.26, 5421.5, LocalDateTime.of(2026, 11, 2, 10, 19, 18), false, "solarman-cloud")));
+
+        webTestClient.get().uri("/inverters/sofar")
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody().json("""
+                {"id": "sofar", "registryId": 135, "name": "SOFAR inverter", "room": "boiler",
+                 "state": "Grid connected", "faults": [], "acPower": 270.0, "pvPower": 200.0,
+                 "pv": {"pv1": {"voltage": 356.0, "current": 0.77, "power": 270.0},
+                        "pv2": {"voltage": 0.0, "current": 0.0, "power": 0.0}},
+                 "frequency": 49.99, "temperature": 32.0, "dailyYield": 0.26, "totalYield": 5421.5,
+                 "measuredAt": "2026-11-02T10:19:18", "stale": false, "source": "solarman-cloud"}""",
+                JsonCompareMode.STRICT);
     }
 
     @Test
