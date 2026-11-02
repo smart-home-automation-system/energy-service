@@ -18,7 +18,10 @@ public enum EnergyError implements ErrorId {
     REGISTRY_UNAVAILABLE("Device registry unavailable"),
 
     //a range of the history that is empty, reversed or too long (HAS-334: the outages, at most 366 days)
-    INVALID_RANGE("Invalid range");
+    INVALID_RANGE("Invalid range"),
+
+    //a metric the history does not have (HAS-331): the details list the names there are, never the one asked for
+    UNKNOWN_METRIC("Unknown metric");
 
     private final String description;
 }

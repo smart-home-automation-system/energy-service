@@ -56,6 +56,10 @@ public final class CloudSamples {
             .replace("2026-11-01 12:52:37", plantLocalTime)).path("result").get(0), CloudBattery.class);
     }
 
+    public static CloudPlant plant() {
+        return SolaxSamples.JSON.treeToValue(result("plant"), CloudPlant.class);
+    }
+
     public static CloudAlarm.Page alarms(final String name) {
         return SolaxSamples.JSON.treeToValue(result(name), CloudAlarm.Page.class);
     }

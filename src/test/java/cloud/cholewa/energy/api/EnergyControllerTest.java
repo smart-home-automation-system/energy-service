@@ -2,6 +2,10 @@ package cloud.cholewa.energy.api;
 
 import cloud.cholewa.energy.api.model.BatteryDirection;
 import cloud.cholewa.energy.api.model.BatteryReply;
+import cloud.cholewa.energy.api.model.DayReply;
+import cloud.cholewa.energy.api.model.FlowsReply;
+import cloud.cholewa.energy.api.model.HistoryReply;
+import cloud.cholewa.energy.api.model.MonthsReply;
 import cloud.cholewa.energy.api.model.GridDirection;
 import cloud.cholewa.energy.api.model.InverterReply;
 import cloud.cholewa.energy.api.model.GridReply;
@@ -13,6 +17,9 @@ import cloud.cholewa.energy.api.model.SourceStatusReply;
 import cloud.cholewa.energy.api.model.StatusReply;
 import cloud.cholewa.energy.config.ExceptionHandlerConfig;
 import cloud.cholewa.energy.error.EnergyException;
+import cloud.cholewa.energy.days.DaysService;
+import cloud.cholewa.energy.flows.FlowsService;
+import cloud.cholewa.energy.history.HistoryService;
 import cloud.cholewa.energy.inverter.BatteryService;
 import cloud.cholewa.energy.inverter.InverterService;
 import cloud.cholewa.energy.meter.GridService;
@@ -28,11 +35,16 @@ import org.springframework.test.json.JsonCompareMode;
 import org.springframework.test.web.reactive.server.WebTestClient;
 import reactor.core.publisher.Mono;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 //The JSON is the contract of the dashboard, so the body is written out whole
@@ -51,6 +63,12 @@ class EnergyControllerTest {
     private InverterService inverterService;
     @MockitoBean
     private BatteryService batteryService;
+    @MockitoBean
+    private FlowsService flowsService;
+    @MockitoBean
+    private HistoryService historyService;
+    @MockitoBean
+    private DaysService daysService;
     @MockitoBean
     private GridOutageService gridOutageService;
 
@@ -299,5 +317,86 @@ class EnergyControllerTest {
             .expectStatus().isOk()
             .expectBody().json("""
                 {"stale": true}""", JsonCompareMode.STRICT);
+    }
+
+    //HAS-331: the balance now - an input not known leaves out what depends on it; every input with its stale written out
+    @Test
+    void should_answer_the_flows() {
+        final Map<String, FlowsReply.Input> inputs = new LinkedHashMap<>();
+        inputs.put("grid", new FlowsReply.Input(LocalDateTime.of(2026, 11, 2, 12, 0), false));
+        inputs.put("sofar", new FlowsReply.Input(null, true));
+        when(flowsService.flows()).thenReturn(Mono.just(new FlowsReply(null, 3000.0, null, -1500.0, 800.0, null,
+            new FlowsReply.Today(null, new BigDecimal("11.20"), new BigDecimal("1.50"), null, null, null, null, null),
+            inputs)));
+
+        webTestClient.get().uri("/flows")
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody().json("""
+                {"solaxPv": 3000.0, "gridPower": -1500.0, "batteryPower": 800.0,
+                 "today": {"imported": 11.20, "exported": 1.50},
+                 "inputs": {"grid": {"measuredAt": "2026-11-02T12:00:00", "stale": false}, "sofar": {"stale": true}}}""",
+                JsonCompareMode.STRICT);
+    }
+
+    @Test
+    void should_answer_the_history_of_a_metric() {
+        final LocalDateTime from = LocalDateTime.of(2026, 11, 2, 0, 0);
+        when(historyService.history("house-load", from, from.plusDays(1))).thenReturn(Mono.just(new HistoryReply(
+            "house-load", from, from.plusDays(1), 300, List.of(new HistoryReply.Point(from, new BigDecimal("500.00"),
+            null, null)))));
+
+        webTestClient.get().uri("/history?metric=house-load&from=2026-11-02T00:00:00&to=2026-11-03T00:00:00")
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody().json("""
+                {"metric": "house-load", "from": "2026-11-02T00:00:00", "to": "2026-11-03T00:00:00",
+                 "bucketSeconds": 300, "points": [{"at": "2026-11-02T00:00:00", "avg": 500.00}]}""",
+                JsonCompareMode.STRICT);
+    }
+
+    @Test
+    void should_refuse_a_metric_not_known_with_its_code() {
+        when(historyService.history(eq("wind"), any(),
+            any())).thenReturn(Mono.error(EnergyException.unknownMetric(List.of("grid-power"))));
+
+        webTestClient.get().uri("/history?metric=wind&from=2026-11-02T00:00:00&to=2026-11-03T00:00:00")
+            .exchange()
+            .expectStatus().isBadRequest()
+            .expectBody()
+            .jsonPath("$.errors[0].code").isEqualTo("UNKNOWN_METRIC")
+            .jsonPath("$.errors[0].details").isEqualTo("The metric is one of grid-power");
+    }
+
+    @Test
+    void should_answer_the_closed_days() {
+        final LocalDate day = LocalDate.of(2026, 11, 1);
+        when(daysService.days(day, day)).thenReturn(Mono.just(List.of(new DayReply(day, 4.0, 1.0, 5.0, 11.2, 0.0, 1.0,
+            0.2, 15.4, 1.0, 0.727, null, null, null))));
+
+        webTestClient.get().uri("/days?from=2026-11-01&to=2026-11-01")
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody().json("""
+                [{"day": "2026-11-01", "solaxYield": 4.0, "sofarYield": 1.0, "production": 5.0, "imported": 11.2,
+                  "exported": 0.0, "charged": 1.0, "discharged": 0.2, "houseLoad": 15.4, "selfConsumption": 1.0,
+                  "gridShare": 0.727}]""", JsonCompareMode.STRICT);
+    }
+
+    //the months as "yyyy-MM"; a month without a closed day without its energies
+    @Test
+    void should_answer_the_billing_year() {
+        when(daysService.months(2026)).thenReturn(Mono.just(new MonthsReply(2026, YearMonth.of(2026, 9),
+            YearMonth.of(2027, 8), new BigDecimal("0.7"), List.of(new MonthsReply.Month(YearMonth.of(2026, 10), 0, null,
+            null, null, null, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+            new BigDecimal("55.00"))))));
+
+        webTestClient.get().uri("/months?year=2026")
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody().json("""
+                {"year": 2026, "from": "2026-09", "to": "2027-08", "ratio": 0.7,
+                 "months": [{"month": "2026-10", "days": 0, "credited": 0, "drawn": 0, "bought": 0, "expired": 0,
+                             "stored": 55.00}]}""", JsonCompareMode.STRICT);
     }
 }

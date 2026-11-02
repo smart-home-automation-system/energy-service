@@ -74,7 +74,7 @@ public class SolaxSnapshot {
     static Optional<BatteryReadingEntity> batteryRow(final SolaxState state) {
         return Optional.ofNullable(state.reading()).map(SolaxReading::battery).map(battery ->
             new BatteryReadingEntity(null, state.readingAt(), battery.soc(), battery.power(), battery.voltage(),
-                battery.current(), battery.temperature()));
+                battery.current(), battery.temperature(), battery.chargedToday(), battery.dischargedToday()));
     }
 
     //the values, not the time: a reading repeated unchanged writes no row
@@ -86,6 +86,6 @@ public class SolaxSnapshot {
 
     private static boolean sameValues(final BatteryReadingEntity row, final BatteryReadingEntity last) {
         return last != null && row.equals(new BatteryReadingEntity(null, row.measuredAt(), last.soc(), last.power(),
-            last.voltage(), last.current(), last.temperature()));
+            last.voltage(), last.current(), last.temperature(), last.chargedToday(), last.dischargedToday()));
     }
 }

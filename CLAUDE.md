@@ -9,8 +9,8 @@ repository map and working rules come from the workspace-level context
 (`organization-repository/claude/organization.md`). The user writes the code in this
 repository themselves; Claude's default role here is analysis, code review and security
 review - the owner had Claude implement the scaffold (HAS-325), the grid meter (HAS-327), the
-SOLAX (HAS-328), the outages of the grid (HAS-334), the monitor of the sources (HAS-332), the SolaX cloud (HAS-329) and
-the SOFAR (HAS-330), and reviews them in IntelliJ.
+SOLAX (HAS-328), the outages of the grid (HAS-334), the monitor of the sources (HAS-332), the SolaX cloud (HAS-329),
+the SOFAR (HAS-330) and the balance, history and days (HAS-331), and reviews them in IntelliJ.
 
 ## Role in the system
 
@@ -38,7 +38,8 @@ the SOFAR (HAS-330), and reviews them in IntelliJ.
 
 ## Build & run
 
-- Build + tests: `mvn verify` - no Docker needed until the first test of PostgreSQL-only SQL.
+- Build + tests: `mvn verify` - **needs a Docker** since HAS-331 (`HistoryRepositoryTest`, Testcontainers PostgreSQL 17:
+  the SQL of the history, the days and the retention; it fails without a Docker, it is not skipped).
 - Local run: `home,local` Spring profiles, port `6014` (Actuator `8014`); in-cluster port `6200`,
   Actuator `8200`. Needs `database-password` and the other `database-*` values. **The real values
   are the production database** - a migration is rehearsed on a throwaway PostgreSQL, never by a
@@ -253,6 +254,38 @@ the SOFAR (HAS-330), and reviews them in IntelliJ.
     `sofar` / `silent` row refused; an open `sofar` fault row left alone by the SOLAX alarm watch and announced as over by
     the fault watch at the next fresh reading (kept open while the broker was missing); the SOFAR row of `inverter_reading`
     written with `run_mode` NULL.
+- **The balance, the history and the days** (HAS-331, packages `flows`, `history`, `days`) - what is easy to break:
+  - **The sign convention** is pinned by `MetricTest` and `FlowsServiceTest`: the grid positive while the house takes, the
+    battery positive while it charges, house load = PV + grid - battery. The stored rows keep the signs of V2 / V3.
+  - **The pool has 2 connections**: every query of a request or a pass runs one after the other (`Flux.concat`,
+    `zipWhen` - never `Mono.zip` of two queries; the service-review of HAS-331), the history one range at a time
+    (`OneAtATime`, a copy of weather-service, each cut off after 10 s).
+  - `StoredValue` is every column read (table, column, inverter); the SQL is built from it only. `StoredValues` reads a
+    value of an inverter by its registry id: empty for an inverter not registered, `REGISTRY_UNAVAILABLE` before the
+    registry was read. `Metric` is the wire names of `/history` (pinned) - a stored value, or a sum with signs.
+  - **Rows are stored only after a change**, so a sum (`SumSeries`) carries each part from its last bucket, or from its
+    last reading before the range; a point only once every part has a value; no min / max.
+  - `HistoryRange` is **the fourth copy** (heating, water, weather) - the owner's choice of 2026-11-02, no move to
+    cholewa-commons; its violation is `INVALID_RANGE` here. `UNKNOWN_METRIC` (pinned) lists the names, never echoes.
+  - `DayCloser` (every hour, bounded at 5 min): every day over and not closed, from `CLOSE_AFTER` (15 min) past its
+    midnight - the last SOFAR reading lands up to six minutes late (the /code-review of HAS-331) - at most 31 days back,
+    from the day of the first grid row on a new database. **The daily counters of the inverters and the battery are the
+    highest value after `COUNTER_SETTLES` (00:30)**: the inverter resets them by its own clock, so the last value of the
+    day may be 0 and the first minutes may carry the day before. The grid: the counters at both midnights - not known on
+    the first day. A day is inserted once (`EnergyDayEntity` is `Persistable`, always new), never corrected.
+  - `CloudDays` keeps the last SolaX cloud answer of each day (the inverter's `dailyYield` - the plant's is the AC output,
+    see above - and the plant's `dailyImported` / `dailyExported`); `SolaxCloudReader` reads the plant too since
+    HAS-331, its failure logged apart and never making the cloud unreachable. In memory: a restart loses the cross-check
+    of the day.
+  - `/flows` holds the grid counters at midnight for the day only from `HOLD_AFTER` (5 min) past midnight (the
+    /code-review of HAS-331); an inverter not registered or the registry not known is an input not known, never an error.
+  - `Settlement` - net-metering by whole months, FIFO of the credit (12 months), from the first closed day; the
+    house's estimate, not the invoice. `period-start` 9 (owner, 2026-11-02: the installation started in September 2020).
+  - `EnergyRetention` (03:20, bounded at 15 min): batches of 5000, never the latest row of a table / an inverter; the
+    days kept forever. `RetentionPropertiesTest` pins the unit (days) and the bounds (31 - 3650 days).
+  - **Rehearsed** (2026-11-02): the released 0.7.0 image applied V1-V7 on a throwaway PostgreSQL with SSL, a month of
+    synthetic readings a minute, the new jar V8: 30 days closed (the first one without the grid - no row before it), a
+    month of history 0.05 s (grid-power) to 0.15 s (house-load, eight queries) warm, `/months` 0.01 s.
 - **The map of type 33** (`Type33`, pinned by `Type33Test` on `src/test/resources/solax/*.json` - answers of
   2026-10-23 19:52, 2026-10-27 20:49, 2026-10-28 10:27 and 2026-10-29 19:09 with invented dongle and inverter serials;
   the last three compared with SolaxCloud (the last one with the Pro 3EM as well), Developer Platform `v2/device/realtime_data` and `v2/plant/realtime_data`, within one

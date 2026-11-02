@@ -57,7 +57,7 @@ class SolaxSnapshotTest {
 
         verify(inverterRepository).save(new InverterReadingEntity(null, ID, READ_AT, 0.0, 0.0, 0.0, 1755.0,
             "normal", 48.0, 38.6));
-        verify(batteryRepository).save(new BatteryReadingEntity(null, READ_AT, 64.0, -1980.0, 52.3, -38.6, 20.0));
+        verify(batteryRepository).save(new BatteryReadingEntity(null, READ_AT, 64.0, -1980.0, 52.3, -38.6, 20.0, 26.6, 10.2));
     }
 
     //a reading repeated unchanged writes no row, a silent SOLAX writes nothing more

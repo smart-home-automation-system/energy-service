@@ -28,24 +28,30 @@ public class SolaxCloudReader {
 
     static final Duration LIMIT = Duration.ofSeconds(50);
     private static final String WHAT = "SolaX cloud";
+    private static final String PLANT = "SolaX cloud plant";
 
     private final InverterRegistry inverterRegistry;
     private final SolaxCloudClient solaxCloudClient;
     private final SolaxCloudTracker solaxCloudTracker;
+    private final CloudDays cloudDays;
     private final Clock clock;
     private final FailureLog failureLog;
+    private final FailureLog plantFailureLog;
 
     public SolaxCloudReader(
         final InverterRegistry inverterRegistry,
         final SolaxCloudClient solaxCloudClient,
         final SolaxCloudTracker solaxCloudTracker,
+        final CloudDays cloudDays,
         final Clock clock
     ) {
         this.inverterRegistry = inverterRegistry;
         this.solaxCloudClient = solaxCloudClient;
         this.solaxCloudTracker = solaxCloudTracker;
+        this.cloudDays = cloudDays;
         this.clock = clock;
         this.failureLog = new FailureLog(log, clock);
+        this.plantFailureLog = new FailureLog(log, clock);
     }
 
     //timeUnit: a bare number of the interval is minutes here too, as SolaxCloudProperties binds it
@@ -57,12 +63,16 @@ public class SolaxCloudReader {
             .flatMap(this::read));
     }
 
-    //each call with its own error handling: a failed battery read keeps a good inverter answer, and the other way
+    //each call with its own error handling: a failed battery read keeps a good inverter answer, and the other way; the
+    //plant (HAS-331, the cross-check of the days) neither makes the cloud reachable nor unreachable, and logs apart
     private Mono<Void> read(final Inverter inverter) {
         return Mono.zip(
                 answer(solaxCloudClient.inverter(inverter.serialNumber())),
-                answer(solaxCloudClient.battery(inverter.serialNumber())))
+                answer(solaxCloudClient.battery(inverter.serialNumber())),
+                plant())
             .doOnNext(answers -> {
+                answers.getT1().ifPresent(cloudDays::inverter);
+                answers.getT3().ifPresent(cloudDays::plant);
                 final LocalDateTime now = LocalDateTime.now(clock).truncatedTo(ChronoUnit.MICROS);
                 if (answers.getT1().isEmpty() && answers.getT2().isEmpty()) {
                     solaxCloudTracker.failed();
@@ -74,6 +84,14 @@ public class SolaxCloudReader {
                 }
             })
             .then();
+    }
+
+    private Mono<Optional<CloudPlant>> plant() {
+        return solaxCloudClient.plant()
+            .map(Optional::of)
+            .doOnNext(answer -> plantFailureLog.succeeded(PLANT))
+            .onErrorResume(failure -> Mono.fromRunnable(() -> plantFailureLog.failed(PLANT, failure))
+                .then(Mono.just(Optional.empty())));
     }
 
     private <T> Mono<Optional<T>> answer(final Mono<T> call) {
