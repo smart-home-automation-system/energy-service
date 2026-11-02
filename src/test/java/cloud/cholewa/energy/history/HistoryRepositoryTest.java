@@ -205,6 +205,22 @@ class HistoryRepositoryTest {
             .as(StepVerifier::create).expectNext("134:1", "135:1").verifyComplete();
     }
 
+    //V9 (HAS-333): an inverter may have an open production episode, without a detail; the meter may not
+    @Test
+    void should_take_a_production_episode_of_an_inverter_only() {
+        execute("DELETE FROM source_alert");
+        databaseClient.sql("INSERT INTO source_alert (source, kind, opened_at) VALUES ('sofar', 'production', now())")
+            .fetch().rowsUpdated().as(StepVerifier::create).expectNext(1L).verifyComplete();
+        databaseClient.sql("INSERT INTO source_alert (source, kind, opened_at) VALUES ('meter', 'production', now())")
+            .fetch().rowsUpdated().as(StepVerifier::create).expectError().verify();
+        databaseClient.sql("INSERT INTO source_alert (source, kind, opened_at, detail) VALUES ('solax', 'production', "
+                + "now(), 'x')")
+            .fetch().rowsUpdated().as(StepVerifier::create).expectError().verify();
+        databaseClient.sql("INSERT INTO source_alert (source, kind, opened_at) VALUES ('sofar', 'production', now())")
+            .fetch().rowsUpdated().as(StepVerifier::create).expectError().verify();
+        execute("DELETE FROM source_alert");
+    }
+
     @Test
     void should_store_a_day_once() {
         final EnergyDayEntity day = new EnergyDayEntity(LocalDate.of(2026, 11, 1), 4.0, 1.0, 5.0, 11.2, 0.0, 1.0,

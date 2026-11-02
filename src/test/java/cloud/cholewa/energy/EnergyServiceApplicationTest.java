@@ -79,7 +79,10 @@ class EnergyServiceApplicationTest {
         assertThat(required(9)).containsExactly("energy.sofar.cloud.app-secret", "solarman-app-secret");
         assertThat(required(10)).containsExactly("energy.sofar.cloud.email", "solarman-email");
         assertThat(required(11)).containsExactly("energy.sofar.cloud.password-sha256", "solarman-password-sha256");
-        assertThat(applicationContext.getEnvironment().getProperty("cholewa.required-properties[12].property")).isNull();
+        //HAS-333: where the house is, for the sunrise and the sunset (the values of blinds-service and light-service)
+        assertThat(required(12)).containsExactly("energy.location.latitude", "location-latitude");
+        assertThat(required(13)).containsExactly("energy.location.longitude", "location-longitude");
+        assertThat(applicationContext.getEnvironment().getProperty("cholewa.required-properties[14].property")).isNull();
     }
 
     //owner, 2026-11-01: Bat Power Low (17) is never told - the battery at its floor, almost every day
