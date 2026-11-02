@@ -65,6 +65,10 @@ the SOFAR (HAS-330), the balance, history and days (HAS-331) and the production 
   until its first reading or read - written out as `null`, never left out or
   `false`; `lastReadingAt` is left out while there is none. `EnergySource` holds the order and the
   wire names (`solaxCloud`), the contract of the dashboard.
+- **`GET /alerts` is the open alarms of the dashboard** (HAS-341): every row of `source_alert` with no `closed_at`,
+  newest first, one derived query; the `detail` of a SOLAX alarm (`<code>|<start>|<name>`, V6) is answered as its
+  name, the fault of the SOFAR as stored, the other kinds without one. A new kind of episode in `source_alert` reaches
+  the dashboard by itself - it prints a kind it does not know as it comes; give it a text there.
 - **Scheduling is off under `test`** (`SchedulingConfig`, `@Profile("!test")`); every reactive
   `@Scheduled` method is wrapped in `ScheduledPass.bounded`, its limit below its delay and pinned by a
   test that hangs the pass (the reconciliation 1 min, the snapshot 50 s); the scheduler has the pool of

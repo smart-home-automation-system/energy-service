@@ -3,6 +3,8 @@ package cloud.cholewa.energy.history;
 import cloud.cholewa.energy.api.model.HistoryReply;
 import cloud.cholewa.energy.database.EnergyDayEntity;
 import cloud.cholewa.energy.database.EnergyDayRepository;
+import cloud.cholewa.energy.database.SourceAlertEntity;
+import cloud.cholewa.energy.database.SourceAlertRepository;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -47,6 +49,9 @@ class HistoryRepositoryTest {
 
     @Autowired
     private EnergyDayRepository energyDayRepository;
+
+    @Autowired
+    private SourceAlertRepository sourceAlertRepository;
 
     private HistoryRepository sut;
 
@@ -203,6 +208,25 @@ class HistoryRepositoryTest {
         databaseClient.sql("SELECT inverter_id, count(*) AS n FROM inverter_reading GROUP BY inverter_id ORDER BY 1")
             .map(row -> row.get("inverter_id", Long.class) + ":" + row.get("n", Long.class)).all()
             .as(StepVerifier::create).expectNext("134:1", "135:1").verifyComplete();
+    }
+
+    //HAS-341: the open alarms of the dashboard - the episodes that last, newest first, an ended one left out
+    @Test
+    void should_answer_the_episodes_that_last_newest_first() {
+        execute("DELETE FROM source_alert");
+        execute("INSERT INTO source_alert (source, kind, opened_at, last_told_at) VALUES "
+            + "('phase b', 'overload', '2026-11-02 10:00', '2026-11-02 10:03')");
+        execute("INSERT INTO source_alert (source, kind, opened_at, last_told_at, detail) VALUES "
+            + "('sofar', 'alarm', '2026-11-02 12:00', '2026-11-02 12:00', 'GridOVP')");
+        execute("INSERT INTO source_alert (source, kind, opened_at, last_told_at, closed_at) VALUES "
+            + "('meter', 'silent', '2026-11-02 11:00', '2026-11-02 11:05', '2026-11-02 11:30')");
+
+        sourceAlertRepository.findByClosedAtIsNullOrderByOpenedAtDesc()
+            .map(SourceAlertEntity::source)
+            .as(StepVerifier::create)
+            .expectNext("sofar", "phase b")
+            .verifyComplete();
+        execute("DELETE FROM source_alert");
     }
 
     //V9 (HAS-333): an inverter may have an open production episode, without a detail; the meter may not

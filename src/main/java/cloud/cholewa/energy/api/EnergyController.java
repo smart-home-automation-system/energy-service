@@ -1,5 +1,7 @@
 package cloud.cholewa.energy.api;
 
+import cloud.cholewa.energy.alert.AlertService;
+import cloud.cholewa.energy.api.model.AlertReply;
 import cloud.cholewa.energy.api.model.BatteryReply;
 import cloud.cholewa.energy.api.model.DayReply;
 import cloud.cholewa.energy.api.model.FlowsReply;
@@ -43,6 +45,7 @@ public class EnergyController {
     private final FlowsService flowsService;
     private final HistoryService historyService;
     private final DaysService daysService;
+    private final AlertService alertService;
 
     //every source of energy with whether it answers - the contract of the availability card of the dashboard - and
     //the grid as the SOLAX sees it (HAS-334)
@@ -76,6 +79,12 @@ public class EnergyController {
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) final LocalDateTime to
     ) {
         return gridOutageService.outages(from, to);
+    }
+
+    //the alarms that last, newest first - the open alarms of the dashboard (HAS-341)
+    @GetMapping("alerts")
+    Mono<List<AlertReply>> alerts() {
+        return alertService.alerts();
     }
 
     //the battery of the SOLAX now (HAS-328)
