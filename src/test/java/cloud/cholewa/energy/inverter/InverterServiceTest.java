@@ -145,7 +145,7 @@ class InverterServiceTest {
     @Test
     void should_answer_the_sofar_with_its_reading_from_the_solarman_cloud() {
         when(sofarTracker.current()).thenReturn(SofarSamples.state(SofarSamples.reading(), true));
-        clock.moveBy(Duration.between(READ_AT, SofarSamples.COLLECTED_AT.plusMinutes(3)));
+        moveTo(SofarSamples.COLLECTED_AT.plusMinutes(3));
 
         service.inverter("sofar").as(StepVerifier::create)
             .expectNext(sofarReply(false))
@@ -157,7 +157,7 @@ class InverterServiceTest {
     void should_serve_an_old_or_failed_sofar_reading_as_stale() {
         when(sofarTracker.current()).thenReturn(SofarSamples.state(SofarSamples.reading(), true),
             SofarSamples.state(SofarSamples.reading(), false));
-        clock.moveBy(Duration.between(READ_AT, SofarSamples.COLLECTED_AT.plusMinutes(16)));
+        moveTo(SofarSamples.COLLECTED_AT.plusMinutes(16));
 
         service.inverter("sofar").as(StepVerifier::create).expectNext(sofarReply(true)).verifyComplete();
         clock.moveBy(Duration.ofMinutes(-14));
@@ -177,6 +177,11 @@ class InverterServiceTest {
                 assertThat(reply.pvPower()).isNull();
             })
             .verifyComplete();
+    }
+
+    //the clock moved to this house time - through the zone, so that a change of the clocks in between counts
+    private void moveTo(final LocalDateTime houseTime) {
+        clock.moveBy(Duration.between(clock.instant(), houseTime.atZone(SolaxSamples.HOUSE).toInstant()));
     }
 
     private static InverterReply sofarReply(final boolean stale) {
