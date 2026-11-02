@@ -285,7 +285,10 @@ the SOFAR (HAS-330) and the balance, history and days (HAS-331), and reviews the
     days kept forever. `RetentionPropertiesTest` pins the unit (days) and the bounds (31 - 3650 days).
   - **Rehearsed** (2026-11-02): the released 0.7.0 image applied V1-V7 on a throwaway PostgreSQL with SSL, a month of
     synthetic readings a minute, the new jar V8: 30 days closed (the first one without the grid - no row before it), a
-    month of history 0.05 s (grid-power) to 0.15 s (house-load, eight queries) warm, `/months` 0.01 s.
+    month of history 0.05 s (grid-power) to 0.15 s (house-load) warm, `/months` 0.01 s. **Through the ingress on 0.8.0 the
+    sum took 0.53 - 0.8 s** (eight queries one after the other, each a round trip to the managed database): since 0.8.1 a sum
+    is one statement (`HistoryRepository.findSum`, the parts joined by `UNION ALL`, the value before the range a row
+    without `at`).
 - **The map of type 33** (`Type33`, pinned by `Type33Test` on `src/test/resources/solax/*.json` - answers of
   2026-10-23 19:52, 2026-10-27 20:49, 2026-10-28 10:27 and 2026-10-29 19:09 with invented dongle and inverter serials;
   the last three compared with SolaxCloud (the last one with the Pro 3EM as well), Developer Platform `v2/device/realtime_data` and `v2/plant/realtime_data`, within one

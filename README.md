@@ -136,8 +136,8 @@ MQTT firmware, tcp/8899 is closed - there is no local path):
 - **The history** (`/history`): the rules of the hot-water and weather history (`HistoryRange`, a copy - the fourth, by
   the owner's choice) - buckets of 5 min, 30 min or 2 h by the length of the range, at most 31 days, avg/min/max per
   bucket. A row is stored only after a change: a bucket without a point is a value that did not change. The sums
-  (`pv-power`, `house-load`) carry each part from its last reading and have the average only. One query at a time (the
-  pool has 2), a month in about 0.15 s on the rehearsal.
+  (`pv-power`, `house-load`) carry each part from its last reading and have the average only. A sum is one query of all its parts;
+  one query at a time (the pool has 2), a month in about 0.15 s on the rehearsal.
 - **The days** (`energy_day`, V8): closed from 00:15 of the next day (a pass every hour, the days a downtime missed after
   it, at most 31 days back) and never changed - the production of each inverter and the battery energies from their daily
   counters (the highest value after 00:30 - the inverter resets them by its own clock), imported / exported from the
