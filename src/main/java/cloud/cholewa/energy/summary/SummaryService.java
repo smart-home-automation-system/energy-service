@@ -25,6 +25,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.YearMonth;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.Collection;
 import java.util.Comparator;
@@ -147,7 +148,7 @@ public class SummaryService {
 
     static Collection<String> silentOf(final List<SourceAlertEntity> episodes, final LocalDateTime midnight,
                                        final LocalDateTime now) {
-        final Duration half = Duration.between(midnight, now).dividedBy(2);
+        final Duration half = between(midnight, now).dividedBy(2);
         return episodes.stream()
             .collect(Collectors.groupingBy(SourceAlertEntity::source,
                 Collectors.reducing(Duration.ZERO, episode -> covered(episode, midnight, now), Duration::plus)))
@@ -162,7 +163,12 @@ public class SummaryService {
         final LocalDateTime start = episode.openedAt().isBefore(midnight) ? midnight : episode.openedAt();
         final LocalDateTime end = Optional.ofNullable(episode.closedAt()).filter(closed -> closed.isBefore(now))
             .orElse(now);
-        return end.isAfter(start) ? Duration.between(start, end) : Duration.ZERO;
+        return end.isAfter(start) ? between(start, end) : Duration.ZERO;
+    }
+
+    //in the house zone: a day of a change of the clock is 23 or 25 hours long
+    private static Duration between(final LocalDateTime from, final LocalDateTime to) {
+        return Duration.between(from.atZone(ZoneId.systemDefault()), to.atZone(ZoneId.systemDefault()));
     }
 
     private Mono<List<EnergyDayEntity>> closedDays(final LocalDate today) {

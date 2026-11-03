@@ -116,7 +116,7 @@ public record DaySummary(
 
     private static String signed(final BigDecimal value) {
         final String number = number(value);
-        return value.signum() > 0 && !"0.0".equals(number) ? "+" + number : number;
+        return value != null && value.signum() > 0 && !"0.0".equals(number) ? "+" + number : number;
     }
 
     private static String whole(final BigDecimal value) {
