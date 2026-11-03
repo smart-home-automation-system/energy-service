@@ -19,6 +19,7 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 import java.time.LocalDateTime;
@@ -74,7 +75,7 @@ class AutomationRepositoryTest {
     //the switch off until the owner turns it on (the task)
     @Test
     void should_hold_the_settings_with_the_switch_off_by_default() {
-        settings.findById(EnergyAutomationEntity.ID).as(StepVerifier::create)
+        settings.findById(EnergyAutomationEntity.ROW_ID).as(StepVerifier::create)
             .assertNext(row -> assertThat(row).isEqualTo(new EnergyAutomationEntity(1, false, 100, 5.0, 60, null)))
             .verifyComplete();
     }
@@ -121,9 +122,9 @@ class AutomationRepositoryTest {
             .flatMap(next -> runs.save(new BatteryChargeRunEntity(null, NOW, "automation", 100, NOW, NOW.plusHours(5),
                     "r-1", null, null, 45.0, null, null, null, null, null, null, next.id()))
                 .flatMap(run -> outages.setChargeRun(next.id(), run.id())
-                    .then(runs.existsByPlannedOutageId(next.id()))
-                    .zipWith(outages.findById(next.id()))
-                    .map(both -> both.getT1() && run.id().equals(both.getT2().chargeRunId()))))
+                    .then(Mono.defer(() -> runs.existsByPlannedOutageId(next.id())))
+                    .flatMap(exists -> outages.findById(next.id())
+                        .map(read -> exists && run.id().equals(read.chargeRunId())))))
             .as(StepVerifier::create)
             .expectNext(true)
             .verifyComplete();

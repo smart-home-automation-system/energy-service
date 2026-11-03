@@ -6,6 +6,7 @@ import cloud.cholewa.energy.database.EnergyAutomationEntity;
 import cloud.cholewa.energy.database.EnergyAutomationRepository;
 import cloud.cholewa.energy.database.PlannedOutageEntity;
 import cloud.cholewa.energy.solax.SolaxProperties;
+import cloud.cholewa.energy.solaxcloud.SolaxCloudException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Mono;
@@ -52,7 +53,7 @@ class AutomationWatchTest {
     }
 
     private void switchOn(final boolean on) {
-        when(settings.findById(EnergyAutomationEntity.ID)).thenReturn(Mono.just(
+        when(settings.findById(EnergyAutomationEntity.ROW_ID)).thenReturn(Mono.just(
             new EnergyAutomationEntity(1, on, 100, 5.0, 60, null)));
     }
 
@@ -133,6 +134,21 @@ class AutomationWatchTest {
         verify(kit.publisher(), times(1)).publishAlert("The automatic charge before the planned outage of Tue 3 Nov"
             + " 20:00-23:00 waits: the state of charge of the battery is not known.");
         verify(kit.client(), never()).setSelfUse(any());
+    }
+
+    //a start the cloud refused is told once and not tried again - its failed run is linked to the outage
+    @Test
+    void should_tell_once_a_start_the_cloud_refused() {
+        when(kit.client().setSelfUse(any())).thenReturn(Mono.error(new SolaxCloudException("The SolaX cloud answered code 10500")));
+        kit.moveTo(LocalDateTime.of(2026, 11, 3, 16, 5));
+        pass();
+        kit.moveTo(LocalDateTime.of(2026, 11, 3, 16, 7));
+        pass();
+
+        verify(kit.client(), times(1)).setSelfUse(any());
+        verify(kit.publisher(), times(1)).publishAlert("The automatic charge before the planned outage of Tue 3 Nov"
+            + " 20:00-23:00 did not start: The SolaX cloud refused the command.");
+        assertThat(kit.only().failure()).isEqualTo("DEVICE_FAILED");
     }
 
     @Test

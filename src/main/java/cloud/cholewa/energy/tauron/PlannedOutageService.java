@@ -36,7 +36,7 @@ public class PlannedOutageService {
         return lane.serially(repository.setSkipAutomation(id, skip))
             .filter(changed -> changed > 0)
             .switchIfEmpty(Mono.error(() -> EnergyException.plannedOutageNotFound(id)))
-            .then(repository.findById(id))
+            .flatMap(changed -> repository.findById(id))
             .map(this::reply);
     }
 

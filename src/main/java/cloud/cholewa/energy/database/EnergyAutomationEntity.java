@@ -20,5 +20,5 @@ public record EnergyAutomationEntity(
     @Column("updated_at") LocalDateTime updatedAt
 ) {
 
-    public static final int ID = 1;
+    public static final int ROW_ID = 1;
 }

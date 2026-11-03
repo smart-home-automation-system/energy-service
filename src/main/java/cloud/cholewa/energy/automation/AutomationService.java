@@ -44,7 +44,7 @@ public class AutomationService {
 
     //the row the migration inserted - a database without it is a failed read, never a default
     Mono<EnergyAutomationEntity> read() {
-        return repository.findById(EnergyAutomationEntity.ID)
+        return repository.findById(EnergyAutomationEntity.ROW_ID)
             .switchIfEmpty(Mono.error(() -> new IllegalStateException("energy_automation has no row")));
     }
 
