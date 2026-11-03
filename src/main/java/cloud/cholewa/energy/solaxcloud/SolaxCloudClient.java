@@ -32,8 +32,10 @@ import java.util.function.Function;
 //  invalid token, which quotes the token back): a failure is a SolaxCloudException with the code alone, never the body.
 //- Built from the injected builder: the calls are traced and logged by Logbook, whose body filter masks the token and the
 //  secret (LogbookConfig); 5 s to connect, 10 s for an answer, nothing retried but the one call after a new token.
-//- The writes (the work mode, the result of a command) are prepared for the charge task: the body is the caller's - its
-//  fields are not verified yet; no write is sent by this service before that task
+//- The writes (HAS-336): the Self Use work mode answers {code, result: {<sn>: {status}}, requestId} - the requestId beside
+//  the result, so the whole answer is handed over; what became of it is asked by the requestId (listByCondition), whose
+//  answer the documentation shows as {code: 0, success: true, result: [{sn, status}]} - a success is code 10000 or
+//  success true. The fields of the work mode were read in the documentation of the platform on 2026-11-03
 @Slf4j
 @Component
 public class SolaxCloudClient {
@@ -120,27 +122,39 @@ public class SolaxCloudClient {
             .map(result -> jsonMapper.treeToValue(result, CloudAlarm.Page.class));
     }
 
-    //for the charge task: the self-use work mode of the inverters of the body; the answer's result as it comes
-    public Mono<JsonNode> setSelfUse(final JsonNode body) {
-        return post("/openapi/v2/device/inverter_work_mode/batch_set_spontaneity_self_use", body);
+    //the Self Use work mode of the inverters of the body (HAS-336): the request id of the command - an answer without one
+    //is a failed call
+    public Mono<String> setSelfUse(final JsonNode body) {
+        return call(value -> postRequest("/openapi/v2/device/inverter_work_mode/batch_set_spontaneity_self_use", body,
+            value))
+            .map(root -> root.path("requestId").asString(""))
+            .filter(requestId -> !requestId.isBlank())
+            .switchIfEmpty(Mono.error(() -> new SolaxCloudException("The SolaX cloud answered no request id")));
     }
 
-    //for the charge task: what became of a command, by its request id - per device 1 offline, 2 issuance failed,
-    //3 issued, 4 received and executing, 5 execution failed, 6 timeout
-    public Mono<JsonNode> requestStatus(final String requestId) {
-        return post("/openapi/apiRequestLog/listByCondition", jsonMapper.createObjectNode().put("requestId", requestId));
+    //what became of a command, by its request id: the status for this device - 1 offline, 2 issuance failed, 3 issued,
+    //4 received and executing, 5 execution failed, 6 timeout; empty while the log has no entry of it
+    public Mono<Integer> requestStatus(final String requestId, final String serialNumber) {
+        return call(value -> postRequest("/openapi/apiRequestLog/listByCondition",
+                jsonMapper.createObjectNode().put("requestId", requestId), value))
+            .flatMapIterable(root -> root.path("result"))
+            .filter(entry -> serialNumber.equals(entry.path("sn").asString("")))
+            .next()
+            .map(entry -> entry.path("status").asInt(0))
+            .filter(status -> status > 0);
     }
 
     private Mono<JsonNode> get(final Function<UriBuilder, URI> uri) {
         return call(value -> webClient.get().uri(uri).header("Authorization", "bearer " + value)
-            .accept(MediaType.APPLICATION_JSON));
+                .accept(MediaType.APPLICATION_JSON))
+            .map(root -> root.path("result"));
     }
 
-    private Mono<JsonNode> post(final String path, final JsonNode body) {
-        return call(value -> webClient.post().uri(path).header("Authorization", "bearer " + value)
+    private WebClient.RequestHeadersSpec<?> postRequest(final String path, final JsonNode body, final String token) {
+        return webClient.post().uri(path).header("Authorization", "bearer " + token)
             .contentType(MediaType.APPLICATION_JSON)
             .accept(MediaType.APPLICATION_JSON)
-            .bodyValue(body));
+            .bodyValue(body);
     }
 
     //with the token held, and once more with a new one when the cloud says it is invalid
@@ -162,9 +176,12 @@ public class SolaxCloudClient {
             .switchIfEmpty(Mono.error(() -> new SolaxCloudException("The SolaX cloud answered without a body")))
             .map(this::tree)
             .flatMap(root -> switch (root.path("code").asInt(-1)) {
-                case SUCCESS -> Mono.just(root.path("result"));
+                case SUCCESS -> Mono.just(root);
                 case INVALID_TOKEN -> Mono.error(new InvalidToken());
-                default -> Mono.error(new SolaxCloudException("The SolaX cloud answered code " + root.path("code")));
+                default -> Mono.just(root)
+                    .filter(answer -> answer.path("success").asBoolean(false))
+                    .switchIfEmpty(Mono.error(() ->
+                        new SolaxCloudException("The SolaX cloud answered code " + root.path("code"))));
             })
             .onErrorMap(failure -> !(failure instanceof SolaxCloudException) && !(failure instanceof InvalidToken),
                 failure -> new SolaxCloudException("The SolaX cloud did not answer: " + failure.getClass().getSimpleName()));

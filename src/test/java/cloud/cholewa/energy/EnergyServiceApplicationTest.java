@@ -1,6 +1,7 @@
 package cloud.cholewa.energy;
 
 import cloud.cholewa.commons.database.DatabaseProperties;
+import cloud.cholewa.energy.charge.ChargeProperties;
 import cloud.cholewa.energy.meter.MeterProperties;
 import cloud.cholewa.energy.monitor.AvailabilityProperties;
 import cloud.cholewa.energy.monitor.OverloadProperties;
@@ -89,6 +90,19 @@ class EnergyServiceApplicationTest {
         assertThat(required(15)).containsExactly("energy.tauron.street", "tauron-street");
         assertThat(required(16)).containsExactly("energy.tauron.house-no", "tauron-house-no");
         assertThat(applicationContext.getEnvironment().getProperty("cholewa.required-properties[17].property")).isNull();
+    }
+
+    //HAS-336: the charge at 5 kW plus an hour, at most 23 h, the command given two minutes; the baseline of Self Use the
+    //owner runs (read in SolaxCloud on 2026-11-03) - a value lost or mistyped would set the inverter wrong after every run
+    @Test
+    void should_charge_and_set_back_as_agreed() {
+        final ChargeProperties charge = applicationContext.getBean(ChargeProperties.class);
+        assertThat(charge.powerKw()).isEqualTo(5.0);
+        assertThat(charge.margin()).isEqualTo(Duration.ofHours(1));
+        assertThat(charge.longest()).isEqualTo(Duration.ofHours(23));
+        assertThat(charge.deliveryTimeout()).isEqualTo(Duration.ofMinutes(2));
+        assertThat(charge.baseline()).isEqualTo(new ChargeProperties.Baseline(10, true, 10, LocalTime.MIDNIGHT,
+            LocalTime.of(23, 59)));
     }
 
     //HAS-337: Tauron read every hour for 30 days ahead, an alert after a day of failed reads, the reminders the day

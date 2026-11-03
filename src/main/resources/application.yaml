@@ -142,6 +142,21 @@ energy:
   # the register of Tauron names it - no default on purpose: a private fact, the manifest gives it; the street without
   # "ul.". Read every interval for ahead-days; reads failing for alert-after are an alert. The reminders by SMS of a
   # planned outage of the street: reminder-at the day before and remind-before its start
+  # the charge of the SOLAX battery from the grid on demand (HAS-336): the estimate of the window at power-kw plus the
+  # margin, at most longest; the command of the SolaX cloud given delivery-timeout to be carried out. baseline - the Self
+  # Use of the inverter the service sets back after a run, as the owner runs it (read in SolaxCloud on 2026-11-03): the
+  # API reads none of it, and a write replaces it whole
+  charge:
+    power-kw: 5.0
+    margin: PT1H
+    longest: PT23H
+    delivery-timeout: PT2M
+    baseline:
+      min-soc: 10
+      charge-from-grid: true
+      charge-upper-soc: 10
+      discharge-start: "00:00"
+      discharge-end: "23:59"
   tauron:
     base-url: https://www.tauron-dystrybucja.pl
     city: ${tauron-city}

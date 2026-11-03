@@ -21,7 +21,28 @@ public enum EnergyError implements ErrorId {
     INVALID_RANGE("Invalid range"),
 
     //a metric the history does not have (HAS-331): the details list the names there are, never the one asked for
-    UNKNOWN_METRIC("Unknown metric");
+    UNKNOWN_METRIC("Unknown metric"),
+
+    //a charge of the battery asked with a target or an end outside the bounds, or by an unknown source (HAS-336)
+    INVALID_CHARGE("Invalid charge"),
+
+    //a charge of the battery asked while one runs or is being ended (HAS-336)
+    CHARGE_IN_PROGRESS("Charge in progress"),
+
+    //a charge asked for a battery already at its target (HAS-336)
+    TARGET_REACHED("Target reached"),
+
+    //no charge to cancel (HAS-336)
+    NOT_FOUND_CHARGE("Charge not found"),
+
+    //a write to the inverter within a minute of the last one (HAS-336: at most one a minute)
+    WRITE_TOO_SOON("Write too soon"),
+
+    //the inverter offline for the SolaX cloud, or its state of charge not known (HAS-336)
+    INVERTER_UNAVAILABLE("Inverter unavailable"),
+
+    //the SolaX cloud refused the command, or the inverter did not carry it out (HAS-336)
+    DEVICE_FAILED("Device failed");
 
     private final String description;
 }
