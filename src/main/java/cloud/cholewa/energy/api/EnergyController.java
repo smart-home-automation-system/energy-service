@@ -3,6 +3,9 @@ package cloud.cholewa.energy.api;
 import cloud.cholewa.energy.alert.AlertService;
 import cloud.cholewa.energy.api.model.AlertReply;
 import cloud.cholewa.energy.api.model.BatteryReply;
+import cloud.cholewa.energy.api.model.ChargeReply;
+import cloud.cholewa.energy.api.model.ChargeRequest;
+import cloud.cholewa.energy.api.model.ChargeRunReply;
 import cloud.cholewa.energy.api.model.DayReply;
 import cloud.cholewa.energy.api.model.FlowsReply;
 import cloud.cholewa.energy.api.model.GridReply;
@@ -12,6 +15,7 @@ import cloud.cholewa.energy.api.model.MonthsReply;
 import cloud.cholewa.energy.api.model.OutageReply;
 import cloud.cholewa.energy.api.model.PlannedOutageReply;
 import cloud.cholewa.energy.api.model.StatusReply;
+import cloud.cholewa.energy.charge.ChargeService;
 import cloud.cholewa.energy.days.DaysService;
 import cloud.cholewa.energy.flows.FlowsService;
 import cloud.cholewa.energy.history.HistoryService;
@@ -23,9 +27,14 @@ import cloud.cholewa.energy.status.EnergyStatusService;
 import cloud.cholewa.energy.tauron.PlannedOutageService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
 
@@ -49,6 +58,7 @@ public class EnergyController {
     private final DaysService daysService;
     private final AlertService alertService;
     private final PlannedOutageService plannedOutageService;
+    private final ChargeService chargeService;
 
     //every source of energy with whether it answers - the contract of the availability card of the dashboard - and
     //the grid as the SOLAX sees it (HAS-334)
@@ -100,6 +110,38 @@ public class EnergyController {
     @GetMapping("battery")
     Mono<BatteryReply> battery() {
         return batteryService.battery();
+    }
+
+    //a charge of the battery from the grid (HAS-336): the run as requested - its command is followed by the watch
+    @PostMapping("battery/charge")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    Mono<ChargeRunReply> charge(
+        @RequestBody final ChargeRequest request,
+        @RequestParam(defaultValue = "dashboard") final String source
+    ) {
+        return chargeService.start(request, source);
+    }
+
+    //the charge going on, ended and the baseline of Self Use set back (HAS-336)
+    @DeleteMapping("battery/charge")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    Mono<ChargeRunReply> cancelCharge() {
+        return chargeService.cancel();
+    }
+
+    //the charge going on or being ended, with the battery now (HAS-336)
+    @GetMapping("battery/charge")
+    Mono<ChargeReply> currentCharge() {
+        return chargeService.current();
+    }
+
+    //the charges requested in [from, to), house times, at most 366 days (HAS-336)
+    @GetMapping("battery/charge/runs")
+    Mono<List<ChargeRunReply>> chargeRuns(
+        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) final LocalDateTime from,
+        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) final LocalDateTime to
+    ) {
+        return chargeService.runs(from, to);
     }
 
     //the balance of the house now and the day so far (HAS-331)

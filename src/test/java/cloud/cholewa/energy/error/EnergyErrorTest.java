@@ -13,6 +13,8 @@ class EnergyErrorTest {
     @Test
     void should_keep_the_codes_of_the_refused_requests() {
         assertThat(Arrays.stream(EnergyError.values()).map(ErrorId::codeOf))
-            .containsExactly("NOT_FOUND_INVERTER", "REGISTRY_UNAVAILABLE", "INVALID_RANGE", "UNKNOWN_METRIC");
+            .containsExactly("NOT_FOUND_INVERTER", "REGISTRY_UNAVAILABLE", "INVALID_RANGE", "UNKNOWN_METRIC",
+                "INVALID_CHARGE", "CHARGE_IN_PROGRESS", "TARGET_REACHED", "NOT_FOUND_CHARGE", "WRITE_TOO_SOON",
+                "INVERTER_UNAVAILABLE", "DEVICE_FAILED");
     }
 }

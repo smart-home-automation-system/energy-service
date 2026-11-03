@@ -10,8 +10,8 @@ repository map and working rules come from the workspace-level context
 repository themselves; Claude's default role here is analysis, code review and security
 review - the owner had Claude implement the scaffold (HAS-325), the grid meter (HAS-327), the
 SOLAX (HAS-328), the outages of the grid (HAS-334), the monitor of the sources (HAS-332), the SolaX cloud (HAS-329),
-the SOFAR (HAS-330), the balance, history and days (HAS-331), the production watch (HAS-333) and the planned outages of
-Tauron (HAS-337), and reviews them in IntelliJ.
+the SOFAR (HAS-330), the balance, history and days (HAS-331), the production watch (HAS-333), the planned outages of
+Tauron (HAS-337) and the charge of the battery (HAS-336), and reviews them in IntelliJ.
 
 ## Role in the system
 
@@ -25,6 +25,8 @@ Tauron (HAS-337), and reviews them in IntelliJ.
   `openapi-eu.solaxcloud.com`). The Solarman Open API for the SOFAR (HAS-330, `globalapi.solarmanpv.com`). weather-service for the illuminance of the
   station (HAS-333, `GET /home/weather/current` by k8s DNS). The public API of Tauron Dystrybucja (HAS-337,
   `www.tauron-dystrybucja.pl`, no login).
+- Writes: the Self Use work mode of the SOLAX through the SolaX cloud - a charge from the grid and the baseline after it
+  (HAS-336), at most one command a minute.
 - Publishes: the alerts, reminders and infos of the outages of the grid to the exchange `notification` of
   `/notification` (user `notification`, `notification-rabbitmq-password`; HAS-334) - the loss, a low battery and
   the return marked for an SMS; the silence of the SOLAX dongle and the grid meter and the overload of a phase
@@ -297,6 +299,9 @@ Tauron (HAS-337), and reviews them in IntelliJ.
     sum took 0.53 - 0.8 s** (eight queries one after the other, each a round trip to the managed database): since 0.8.1 a sum
     is one statement (`HistoryRepository.findSum`, the parts joined by `UNION ALL`, the value before the range a row
     without `at`).
+  - **The grid of a day is judged by the 3EM** (the gate of HAS-331, 2026-11-03): on 2026-11-02 `/days` imported 40.37 kWh
+    against 40.36 of the counters of the 3EM at both midnights; SolaxCloud answered 38.7 (-4.3 %) - the own meter of the
+    SOLAX, which read 5 - 100 W below the Pro 3EM on the mapping of type 33. The yield of the SOLAX matched SolaxCloud.
 - **The inverter that does not produce in the sun** (HAS-333, package `production`) - what is easy to break:
   - **The metric of the station is the illuminance** (lx, `illuminance` of `GET /home/weather/current`): the WS90 has no
     solar radiation (W/m2) - checked 2026-11-02, the only other light metric is `uv`. About 25 000 lx at the noon of a sunny
@@ -317,6 +322,37 @@ Tauron (HAS-337), and reviews them in IntelliJ.
     (the outage alert); its count starts anew. The counts are in memory; the open rows (`source_alert`, kind `production`,
     V9 - solax / sofar, no detail) are read every pass, and **the table follows the broker**: a row is written only once its
     notice was published.
+- **The charge of the battery from the grid** (HAS-336, package `charge`) - what is easy to break:
+  - **The write replaces the Self Use of the inverter whole, and the API reads none of it** (the documentation of the
+    SolaX Developer Platform, read 2026-11-03: `batch_set_spontaneity_self_use` - `minSoc`, `chargeFromGridEnable`,
+    `chargeUpperSoc`, charge and discharge windows 1 as hh:mm, `enableTimePeriod2` and windows 2, `businessType` 1). So the
+    service writes, and sets back after every run, **the baseline of the owner** (`energy.charge.baseline`, read by him in
+    the remote settings of global.solaxcloud.com on 2026-11-03): Self Use, Min SOC 10 %, Charge From Grid Enable to 10 %,
+    force charge 00:00 - 00:00 (off), discharge 00:00 - 23:59, period 2 off. **Change it with the inverter**, or every run
+    undoes the change. The TOU of SolaxCloud was stopped then (a template with a 13:00 - 14:00 Charging slot exists).
+  - A charge: the floor and the discharge window of the baseline, the grid up to the target, the window from the minute of
+    the request to `until` or the estimate (the SOC to the target of 26.5 kWh at 5 kW plus an hour, at most 23 h); across
+    midnight period 1 to 23:59 and period 2 from 00:00 (`SelfUseCommand`, pinned whole by `SelfUseCommandTest`). The window
+    is a time of a day - left set it would charge again the next day, so **every end sets the baseline back** (owner,
+    2026-11-03: target, window and cancel alike).
+  - `SolaxCloudClient.setSelfUse` answers the `requestId` beside `result` (the whole answer is read); `requestStatus` takes
+    `code` 10000 **or** `success: true` - the documentation shows the log answering `code: 0`. Status 1 offline - failed
+    `INVERTER_UNAVAILABLE`, 2 / 5 - failed `DEVICE_FAILED`, both with nothing to set back (`restored_at` set at once); 6, or no
+    4 within `delivery-timeout` (PT2M) - failed `DEVICE_FAILED` **with** the baseline set back (it may have been taken).
+  - **One lane** (`InverterCommands.serially`, `OneAtATime` of the history, public since): a request and the pass of
+    `ChargeWatch` never change a run at once. **At most one write a minute**, every attempt counted, a refused one
+    included (`WRITE_TOO_SOON`). `ChargeWatch` every 10 s, bounded at 9 s - a pass cut during a write sends the baseline
+    again a minute later (harmless); it asks the database only while `ChargeWatchFlag` is raised (a start, the pod start).
+  - The HTTP start answers `202` once the command was sent (`state: requested`); the delivery and its failure come with the
+    watch, not with the answer - a stubbed status 5 ends the run `failed` / `DEVICE_FAILED` (`ChargeWatchTest`). The body is
+    JSON (`{}` for the defaults) - a request without a `Content-Type` is a 415.
+  - The infos (Discord, never SMS for the manual charge): started when the inverter takes it, not started, ended once the
+    baseline is set back. `battery_charge_run` (V11): one run without its end (partial unique index), source, target and
+    the pair `ended_at` / `ended_by` checked (`BatteryChargeRunRepositoryTest` on PostgreSQL).
+  - **Rehearsed** (2026-11-03): the released 0.11.0 image applied V1-V10 on a throwaway PostgreSQL with SSL, the new jar V11;
+    a second open run refused by the index; the endpoints answered without a registry (`503 REGISTRY_UNAVAILABLE`) - no
+    write reached the cloud. **The first real charge is run with the owner watching SolaxCloud** (the DoD): the behaviour of
+    the inverter after the window and the baseline go into this section.
 - **The planned outages of Tauron** (HAS-337, package `tauron`) - what is easy to break:
   - **The API** (the one of the Home Assistant integration Eales/tauron-dystrybucja, checked 2026-11-03): `cities?partName=`,
     `streets?partName=&ownerGAID=<the GAID of the town>` (not its OwnerGAID - that answers an empty list), `outages/address`

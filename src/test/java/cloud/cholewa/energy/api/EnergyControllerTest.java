@@ -29,6 +29,10 @@ import cloud.cholewa.energy.outage.GridOutageService;
 import cloud.cholewa.energy.solax.RunMode;
 import cloud.cholewa.energy.status.EnergyStatusService;
 import cloud.cholewa.energy.tauron.PlannedOutageService;
+import cloud.cholewa.energy.charge.ChargeService;
+import cloud.cholewa.energy.api.model.ChargeReply;
+import cloud.cholewa.energy.api.model.ChargeRequest;
+import cloud.cholewa.energy.api.model.ChargeRunReply;
 import cloud.cholewa.energy.api.model.PlannedOutageReply;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -79,6 +83,93 @@ class EnergyControllerTest {
     private AlertService alertService;
     @MockitoBean
     private PlannedOutageService plannedOutageService;
+    @MockitoBean
+    private ChargeService chargeService;
+
+    private static ChargeRunReply chargingRun() {
+        return new ChargeRunReply(7L, "charging", "dashboard", LocalDateTime.of(2026, 11, 3, 14, 5, 30), 100,
+            LocalDateTime.of(2026, 11, 3, 14, 5), LocalDateTime.of(2026, 11, 3, 18, 0), 4,
+            LocalDateTime.of(2026, 11, 3, 14, 5, 50), 45.0, null, null, null, null, null);
+    }
+
+    //HAS-336, the contract of the energy panel (HAS-342): the fields of the charge going on, written out whole
+    @Test
+    void should_answer_the_charge_going_on() {
+        when(chargeService.current()).thenReturn(Mono.just(new ChargeReply(true, chargingRun(), 62.5, 4800.0, 81L)));
+
+        webTestClient.get().uri("/battery/charge")
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody().json("""
+                {"active": true,
+                 "run": {"id": 7, "state": "charging", "source": "dashboard", "requestedAt": "2026-11-03T14:05:30",
+                         "targetSoc": 100, "windowStart": "2026-11-03T14:05:00", "windowEnd": "2026-11-03T18:00:00",
+                         "deliveryStatus": 4, "deliveredAt": "2026-11-03T14:05:50", "socAtStart": 45.0},
+                 "soc": 62.5, "power": 4800.0, "minutesLeft": 81}""", JsonCompareMode.STRICT);
+    }
+
+    @Test
+    void should_answer_no_charge_as_inactive() {
+        when(chargeService.current()).thenReturn(Mono.just(new ChargeReply(false, null, null, null, null)));
+
+        webTestClient.get().uri("/battery/charge")
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody().json("{\"active\": false}", JsonCompareMode.STRICT);
+    }
+
+    //the source defaults to the dashboard; {} takes the defaults of the body
+    @Test
+    void should_start_a_charge_and_answer_202() {
+        when(chargeService.start(new ChargeRequest(80, LocalDateTime.of(2026, 11, 3, 16, 0)), "automation"))
+            .thenReturn(Mono.just(chargingRun()));
+        when(chargeService.start(new ChargeRequest(null, null), "dashboard")).thenReturn(Mono.just(chargingRun()));
+
+        webTestClient.post().uri("/battery/charge?source=automation")
+            .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+            .bodyValue("{\"targetSoc\": 80, \"until\": \"2026-11-03T16:00:00\"}")
+            .exchange()
+            .expectStatus().isAccepted()
+            .expectBody().jsonPath("$.state").isEqualTo("charging");
+        webTestClient.post().uri("/battery/charge")
+            .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+            .bodyValue("{}")
+            .exchange()
+            .expectStatus().isAccepted();
+    }
+
+    @Test
+    void should_answer_a_second_charge_with_its_code() {
+        when(chargeService.start(new ChargeRequest(null, null), "dashboard"))
+            .thenReturn(Mono.error(EnergyException.chargeInProgress()));
+
+        webTestClient.post().uri("/battery/charge")
+            .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+            .bodyValue("{}")
+            .exchange()
+            .expectStatus().isEqualTo(409)
+            .expectBody().jsonPath("$.errors[0].code").isEqualTo("CHARGE_IN_PROGRESS");
+    }
+
+    @Test
+    void should_cancel_a_charge_and_answer_202() {
+        when(chargeService.cancel()).thenReturn(Mono.just(chargingRun()));
+
+        webTestClient.delete().uri("/battery/charge")
+            .exchange()
+            .expectStatus().isAccepted();
+    }
+
+    @Test
+    void should_answer_the_runs_of_a_range() {
+        when(chargeService.runs(LocalDateTime.of(2026, 11, 1, 0, 0), LocalDateTime.of(2026, 11, 4, 0, 0)))
+            .thenReturn(Mono.just(List.of(chargingRun())));
+
+        webTestClient.get().uri("/battery/charge/runs?from=2026-11-01T00:00:00&to=2026-11-04T00:00:00")
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody().jsonPath("$[0].id").isEqualTo(7);
+    }
 
     //HAS-337: notifiedAt left out until a notice was published, skipAutomation always written
     @Test

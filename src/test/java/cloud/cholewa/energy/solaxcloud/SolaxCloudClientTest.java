@@ -222,21 +222,73 @@ class SolaxCloudClientTest {
         assertThat(server.takeRequest().getUrl().queryParameter("alarmState")).isEqualTo("0");
     }
 
-    //prepared for the charge task: the body is the caller's, sent as JSON with the token
+    //HAS-336: the work mode answers its request id beside the result
     @Test
-    void should_send_the_request_status_query_as_json() throws InterruptedException {
+    void should_send_the_self_use_work_mode_and_answer_its_request_id() throws InterruptedException {
         server.enqueue(token("first"));
         server.enqueue(json("""
-            {"code":10000,"result":[{"status":4}]}"""));
+            {"code":10000,"message":"success","result":{"H1234567890ABC":{"status":3}},"requestId":"r-1"}"""));
 
-        client.requestStatus("r-1").as(StepVerifier::create)
-            .assertNext(result -> assertThat(result.get(0).path("status").asInt()).isEqualTo(4))
+        client.setSelfUse(SolaxSamples.JSON.readTree("{\"snList\":[\"H1234567890ABC\"]}")).as(StepVerifier::create)
+            .expectNext("r-1")
             .verifyComplete();
         server.takeRequest();
         final RecordedRequest request = server.takeRequest();
         assertThat(request.getMethod()).isEqualTo("POST");
+        assertThat(request.getUrl().encodedPath())
+            .isEqualTo("/openapi/v2/device/inverter_work_mode/batch_set_spontaneity_self_use");
+        assertThat(request.getHeaders().get("Authorization")).isEqualTo("bearer first");
+        assertThat(request.getBody().utf8()).isEqualTo("{\"snList\":[\"H1234567890ABC\"]}");
+    }
+
+    @Test
+    void should_fail_a_work_mode_answered_without_a_request_id() {
+        server.enqueue(token("first"));
+        server.enqueue(json("""
+            {"code":10000,"result":{}}"""));
+
+        client.setSelfUse(SolaxSamples.JSON.createObjectNode()).as(StepVerifier::create)
+            .expectErrorSatisfies(failure -> assertThat(failure)
+                .isInstanceOf(SolaxCloudException.class)
+                .hasMessage("The SolaX cloud answered no request id"))
+            .verify();
+    }
+
+    @Test
+    void should_fail_a_work_mode_the_cloud_refused() {
+        server.enqueue(token("first"));
+        server.enqueue(json("""
+            {"code":10500,"message":"no permission","requestId":"r-1"}"""));
+
+        client.setSelfUse(SolaxSamples.JSON.createObjectNode()).as(StepVerifier::create)
+            .expectErrorSatisfies(failure -> assertThat(failure).hasMessage("The SolaX cloud answered code 10500"))
+            .verify();
+    }
+
+    //the documentation shows the log answered with code 0 and success true
+    @Test
+    void should_read_the_status_of_a_command_for_its_inverter() throws InterruptedException {
+        server.enqueue(token("first"));
+        server.enqueue(json("""
+            {"code":0,"message":"string","success":true,"result":[{"sn":"OTHER","status":5},
+             {"sn":"H1234567890ABC","status":4}]}"""));
+
+        client.requestStatus("r-1", "H1234567890ABC").as(StepVerifier::create)
+            .expectNext(4)
+            .verifyComplete();
+        server.takeRequest();
+        final RecordedRequest request = server.takeRequest();
         assertThat(request.getUrl().encodedPath()).isEqualTo("/openapi/apiRequestLog/listByCondition");
         assertThat(request.getBody().utf8()).isEqualTo("{\"requestId\":\"r-1\"}");
+    }
+
+    @Test
+    void should_answer_no_status_while_the_log_has_none_of_the_inverter() {
+        server.enqueue(token("first"));
+        server.enqueue(json("""
+            {"code":10000,"result":[]}"""));
+
+        client.requestStatus("r-1", "H1234567890ABC").as(StepVerifier::create).verifyComplete();
     }
 
     //two calls at once take one token between them
