@@ -28,6 +28,8 @@ import cloud.cholewa.energy.meter.GridService;
 import cloud.cholewa.energy.outage.GridOutageService;
 import cloud.cholewa.energy.solax.RunMode;
 import cloud.cholewa.energy.status.EnergyStatusService;
+import cloud.cholewa.energy.tauron.PlannedOutageService;
+import cloud.cholewa.energy.api.model.PlannedOutageReply;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webflux.test.autoconfigure.WebFluxTest;
@@ -75,6 +77,32 @@ class EnergyControllerTest {
     private GridOutageService gridOutageService;
     @MockitoBean
     private AlertService alertService;
+    @MockitoBean
+    private PlannedOutageService plannedOutageService;
+
+    //HAS-337: notifiedAt left out until a notice was published, skipAutomation always written
+    @Test
+    void should_answer_the_planned_outages() {
+        when(plannedOutageService.planned()).thenReturn(Mono.just(List.of(
+            new PlannedOutageReply(LocalDateTime.of(2026, 11, 12, 8, 0), LocalDateTime.of(2026, 11, 12, 13, 0),
+                "planned", "street", "Testowo ul. Przykładowa", LocalDateTime.of(2026, 11, 3, 15, 0),
+                LocalDateTime.of(2026, 11, 3, 15, 1), false),
+            new PlannedOutageReply(LocalDateTime.of(2026, 11, 18, 8, 0), LocalDateTime.of(2026, 11, 18, 14, 0),
+                "planned", "town", "Testowo ul. Lipowa", LocalDateTime.of(2026, 11, 3, 15, 0), null, false))));
+
+        webTestClient.get().uri("/outages/planned")
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody().json("""
+                [
+                  {"startsAt": "2026-11-12T08:00:00", "endsAt": "2026-11-12T13:00:00", "kind": "planned",
+                   "scope": "street", "description": "Testowo ul. Przykładowa", "firstSeenAt": "2026-11-03T15:00:00",
+                   "notifiedAt": "2026-11-03T15:01:00", "skipAutomation": false},
+                  {"startsAt": "2026-11-18T08:00:00", "endsAt": "2026-11-18T14:00:00", "kind": "planned",
+                   "scope": "town", "description": "Testowo ul. Lipowa", "firstSeenAt": "2026-11-03T15:00:00",
+                   "skipAutomation": false}
+                ]""", JsonCompareMode.STRICT);
+    }
 
     //HAS-341: the open alarms - the detail of an alarm written out, left out for the other kinds
     @Test

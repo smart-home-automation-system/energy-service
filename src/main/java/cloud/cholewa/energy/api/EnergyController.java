@@ -10,6 +10,7 @@ import cloud.cholewa.energy.api.model.HistoryReply;
 import cloud.cholewa.energy.api.model.InverterReply;
 import cloud.cholewa.energy.api.model.MonthsReply;
 import cloud.cholewa.energy.api.model.OutageReply;
+import cloud.cholewa.energy.api.model.PlannedOutageReply;
 import cloud.cholewa.energy.api.model.StatusReply;
 import cloud.cholewa.energy.days.DaysService;
 import cloud.cholewa.energy.flows.FlowsService;
@@ -19,6 +20,7 @@ import cloud.cholewa.energy.inverter.InverterService;
 import cloud.cholewa.energy.meter.GridService;
 import cloud.cholewa.energy.outage.GridOutageService;
 import cloud.cholewa.energy.status.EnergyStatusService;
+import cloud.cholewa.energy.tauron.PlannedOutageService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -46,6 +48,7 @@ public class EnergyController {
     private final HistoryService historyService;
     private final DaysService daysService;
     private final AlertService alertService;
+    private final PlannedOutageService plannedOutageService;
 
     //every source of energy with whether it answers - the contract of the availability card of the dashboard - and
     //the grid as the SOLAX sees it (HAS-334)
@@ -79,6 +82,12 @@ public class EnergyController {
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) final LocalDateTime to
     ) {
         return gridOutageService.outages(from, to);
+    }
+
+    //the outages Tauron announces for the house that have not ended, the soonest first (HAS-337)
+    @GetMapping("outages/planned")
+    Mono<List<PlannedOutageReply>> plannedOutages() {
+        return plannedOutageService.planned();
     }
 
     //the alarms that last, newest first - the open alarms of the dashboard (HAS-341)
