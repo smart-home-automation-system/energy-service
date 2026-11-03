@@ -349,6 +349,14 @@ Tauron (HAS-337) and the charge of the battery (HAS-336), and reviews them in In
   - The infos (Discord, never SMS for the manual charge): started when the inverter takes it, not started, ended once the
     baseline is set back. `battery_charge_run` (V11): one run without its end (partial unique index), source, target and
     the pair `ended_at` / `ended_by` checked (`BatteryChargeRunRepositoryTest` on PostgreSQL).
+  - **The first real run** (0.12.0, 2026-11-03 13:00, the owner watching SolaxCloud, the battery at 7 %): the charge to 20 %
+    in a 15 min window **ran within about 12 s at 5.1 kW**; the SolaX cloud answered the result of the command
+    (`listByCondition`) **10403** - refused to the application of the owner - so 0.12.0 saw no status 4, ended the run after
+    2 min as failed and set the baseline back: the charge **stopped within about 20 s** and the remote settings showed the
+    baseline again (00:00 - 00:00 force charge, 00:00 - 23:59 discharge, period 2 off). Since then (owner, 2026-11-03) a
+    charge counts as carried out also once **the battery charges and the 3EM imports at `charging-above-watts` (1 kW) or
+    more** - the panels never make the grid import, so a PV charge is not taken for it; the refused result is one WARN an
+    hour (`FailureLog`). The cancel and the behaviour after a window still to be checked on the next run.
   - **Rehearsed** (2026-11-03): the released 0.11.0 image applied V1-V10 on a throwaway PostgreSQL with SSL, the new jar V11;
     a second open run refused by the index; the endpoints answered without a registry (`503 REGISTRY_UNAVAILABLE`) - no
     write reached the cloud. **The first real charge is run with the owner watching SolaxCloud** (the DoD): the behaviour of

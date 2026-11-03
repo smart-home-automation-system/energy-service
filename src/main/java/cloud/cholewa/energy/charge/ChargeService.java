@@ -9,6 +9,7 @@ import cloud.cholewa.energy.database.BatteryChargeRunEntity;
 import cloud.cholewa.energy.database.BatteryChargeRunRepository;
 import cloud.cholewa.energy.error.EnergyException;
 import cloud.cholewa.energy.inverter.BatteryService;
+import cloud.cholewa.energy.meter.GridService;
 import cloud.cholewa.energy.solax.SolaxProperties;
 import cloud.cholewa.energy.solaxcloud.SolaxCloudException;
 import lombok.RequiredArgsConstructor;
@@ -43,6 +44,7 @@ public class ChargeService {
     private final BatteryChargeRunRepository repository;
     private final InverterCommands commands;
     private final BatteryService batteryService;
+    private final GridService gridService;
     private final NotificationPublisher notificationPublisher;
     private final ChargeProperties properties;
     private final SolaxProperties solaxProperties;
@@ -158,9 +160,18 @@ public class ChargeService {
     }
 
     Mono<Optional<Double>> socOrNull() {
+        return power().map(now -> Optional.ofNullable(now.soc()));
+    }
+
+    //the SOC and the power of the battery and the power of the grid now - what is stale is not known
+    Mono<ChargeRules.Power> power() {
         return batteryService.battery()
-            .map(battery -> Optional.ofNullable(battery.soc()).filter(soc -> !battery.stale()))
-            .defaultIfEmpty(Optional.empty());
+            .zipWith(gridService.grid())
+            .map(both -> new ChargeRules.Power(
+                both.getT1().stale() ? null : both.getT1().soc(),
+                both.getT1().stale() ? null : both.getT1().power(),
+                both.getT2().stale() ? null : both.getT2().totalActivePower()))
+            .defaultIfEmpty(ChargeRules.Power.NOT_KNOWN);
     }
 
     Mono<Void> tell(final String text) {

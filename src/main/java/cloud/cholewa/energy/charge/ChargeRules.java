@@ -90,8 +90,24 @@ final class ChargeRules {
     //failed, execution failed); it may have taken it (timed out, or no execution within the delivery timeout); not yet
     enum Delivery { EXECUTING, OFFLINE, NOT_TAKEN, UNCERTAIN, WAITING }
 
+    //the battery and the grid now, null what is not known or not fresh
+    record Power(Double soc, Double battery, Double grid) {
+
+        static final Power NOT_KNOWN = new Power(null, null, null);
+
+        //the battery charging and the house taking from the grid at the given power or more - the grid charge going on
+        boolean gridCharging(final int watts) {
+            return battery != null && grid != null && battery >= watts && grid >= watts;
+        }
+    }
+
     static Delivery deliveryOf(final Integer status, final boolean late) {
-        if (status != null && status == EXECUTING) {
+        return deliveryOf(status, late, Power.NOT_KNOWN, Integer.MAX_VALUE);
+    }
+
+    //the status of the command when the cloud answers it, else the battery charging from the grid (owner, 2026-11-03)
+    static Delivery deliveryOf(final Integer status, final boolean late, final Power power, final int chargingAboveWatts) {
+        if ((status != null && status == EXECUTING) || power.gridCharging(chargingAboveWatts)) {
             return Delivery.EXECUTING;
         }
         if (status != null && status == OFFLINE) {

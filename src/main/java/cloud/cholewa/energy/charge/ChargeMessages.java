@@ -38,7 +38,7 @@ final class ChargeMessages {
     private static String reason(final BatteryChargeRunEntity run) {
         return Optional.ofNullable(run.deliveryStatus())
             .map(status -> "the SolaX cloud answered status " + status)
-            .orElse("the inverter did not take the command");
+            .orElse("the command was not confirmed in time");
     }
 
     private static String soc(final Double soc) {

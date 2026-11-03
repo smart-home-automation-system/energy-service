@@ -21,6 +21,9 @@ import java.time.temporal.ChronoUnit;
 //margin - added to the estimate, an hour, up to three, a bare number in minutes
 //longest - the longest window of a charge, 23 hours: the windows of the inverter are times of a day
 //deliveryTimeout - how long the result of a command is asked for before the run fails, two minutes
+//chargingAboveWatts - a charge is taken as carried out once the battery charges and the house takes from the grid at
+//this power or more, 1 kW: the SolaX cloud refuses the result of a command to the application of the owner (10403,
+//the first real run of 2026-11-03), and the panels alone never make the grid import
 //baseline - the Self Use settings of the inverter the service sets back after a run (owner 2026-11-03, read in
 //SolaxCloud): the API reads none of them, and a write replaces them whole
 @Validated
@@ -31,6 +34,7 @@ public record ChargeProperties(
     @NotNull @DurationUnit(ChronoUnit.HOURS) @DurationMin(hours = 1) @DurationMax(hours = 23) Duration longest,
     @NotNull @DurationUnit(ChronoUnit.SECONDS) @DurationMin(seconds = 30) @DurationMax(minutes = 10)
     Duration deliveryTimeout,
+    @NotNull @Min(100) @Max(5000) Integer chargingAboveWatts,
     @NotNull @Valid Baseline baseline
 ) {
 

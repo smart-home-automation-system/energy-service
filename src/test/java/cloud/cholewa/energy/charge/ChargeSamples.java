@@ -15,7 +15,7 @@ final class ChargeSamples {
     static final ChargeProperties.Baseline BASELINE = new ChargeProperties.Baseline(10, true, 10, LocalTime.MIDNIGHT,
         LocalTime.of(23, 59));
     static final ChargeProperties PROPERTIES = new ChargeProperties(5.0, Duration.ofHours(1), Duration.ofHours(23),
-        Duration.ofMinutes(2), BASELINE);
+        Duration.ofMinutes(2), 1000, BASELINE);
 
     private ChargeSamples() {
     }
