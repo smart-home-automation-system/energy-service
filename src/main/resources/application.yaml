@@ -138,6 +138,20 @@ energy:
   location:
     latitude: ${location-latitude}
     longitude: ${location-longitude}
+  # the planned outages Tauron Dystrybucja announces for the house (HAS-337): its public API, no login. The address as
+  # the register of Tauron names it - no default on purpose: a private fact, the manifest gives it; the street without
+  # "ul.". Read every interval for ahead-days; reads failing for alert-after are an alert. The reminders by SMS of a
+  # planned outage of the street: reminder-at the day before and remind-before its start
+  tauron:
+    base-url: https://www.tauron-dystrybucja.pl
+    city: ${tauron-city}
+    street: ${tauron-street}
+    house-no: ${tauron-house-no}
+    interval: PT1H
+    ahead-days: 30
+    alert-after: PT24H
+    reminder-at: "18:00"
+    remind-before: PT2H
 
 # the notifications of the outages (HAS-334): the exchange is on the same broker as spring.rabbitmq.*, on its own
 # virtual host - a second connection (NotificationRabbitConfig); env is one of the two headers it routes by.
@@ -188,6 +202,12 @@ cholewa:
       variable: location-latitude
     - property: energy.location.longitude
       variable: location-longitude
+    - property: energy.tauron.city
+      variable: tauron-city
+    - property: energy.tauron.street
+      variable: tauron-street
+    - property: energy.tauron.house-no
+      variable: tauron-house-no
 
 server:
   port: 6200
@@ -308,6 +328,12 @@ energy:
   location:
     latitude: 0.0
     longitude: 0.0
+  # Tauron at an address nothing listens on, an address that is not the house
+  tauron:
+    base-url: http://localhost:1
+    city: Testowo
+    street: Przykładowa
+    house-no: "1"
 
 internal:
   service:

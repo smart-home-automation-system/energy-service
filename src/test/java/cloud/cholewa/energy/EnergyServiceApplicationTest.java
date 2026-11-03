@@ -5,6 +5,7 @@ import cloud.cholewa.energy.meter.MeterProperties;
 import cloud.cholewa.energy.monitor.AvailabilityProperties;
 import cloud.cholewa.energy.monitor.OverloadProperties;
 import cloud.cholewa.energy.solax.SolaxProperties;
+import cloud.cholewa.energy.tauron.TauronProperties;
 import cloud.cholewa.shelly.http.ShellyGen1Client;
 import cloud.cholewa.shelly.http.ShellyRpcClient;
 import cloud.cholewa.shelly.codec.ShellyMqttDecoder;
@@ -16,6 +17,7 @@ import org.springframework.scheduling.annotation.ScheduledAnnotationBeanPostProc
 import org.springframework.test.context.ActiveProfiles;
 
 import java.time.Duration;
+import java.time.LocalTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -82,7 +84,25 @@ class EnergyServiceApplicationTest {
         //HAS-333: where the house is, for the sunrise and the sunset (the values of blinds-service and light-service)
         assertThat(required(12)).containsExactly("energy.location.latitude", "location-latitude");
         assertThat(required(13)).containsExactly("energy.location.longitude", "location-longitude");
-        assertThat(applicationContext.getEnvironment().getProperty("cholewa.required-properties[14].property")).isNull();
+        //HAS-337: the address of the house for the planned outages of Tauron (private, the manifest)
+        assertThat(required(14)).containsExactly("energy.tauron.city", "tauron-city");
+        assertThat(required(15)).containsExactly("energy.tauron.street", "tauron-street");
+        assertThat(required(16)).containsExactly("energy.tauron.house-no", "tauron-house-no");
+        assertThat(applicationContext.getEnvironment().getProperty("cholewa.required-properties[17].property")).isNull();
+    }
+
+    //HAS-337: Tauron read every hour for 30 days ahead, an alert after a day of failed reads, the reminders the day
+    //before at 18:00 and 2 h before the start - a duration lost or mistyped would bind as milliseconds
+    @Test
+    void should_read_the_planned_outages_as_agreed() {
+        final TauronProperties tauron =
+            applicationContext.getBean(TauronProperties.class);
+        assertThat(tauron.baseUrl()).hasToString("http://localhost:1");
+        assertThat(tauron.interval()).isEqualTo(Duration.ofHours(1));
+        assertThat(tauron.aheadDays()).isEqualTo(30);
+        assertThat(tauron.alertAfter()).isEqualTo(Duration.ofHours(24));
+        assertThat(tauron.reminderAt()).isEqualTo(LocalTime.of(18, 0));
+        assertThat(tauron.remindBefore()).isEqualTo(Duration.ofHours(2));
     }
 
     //owner, 2026-11-01: Bat Power Low (17) is never told - the battery at its floor, almost every day
