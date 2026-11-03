@@ -170,6 +170,9 @@ energy:
     alert-after: PT24H
     reminder-at: "18:00"
     remind-before: PT2H
+  # the daily energy summary (HAS-339): an info at this house time, a whole minute
+  summary:
+    time: "21:30"
 
 # the notifications of the outages (HAS-334): the exchange is on the same broker as spring.rabbitmq.*, on its own
 # virtual host - a second connection (NotificationRabbitConfig); env is one of the two headers it routes by.

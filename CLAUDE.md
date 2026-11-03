@@ -11,8 +11,8 @@ repository themselves; Claude's default role here is analysis, code review and s
 review - the owner had Claude implement the scaffold (HAS-325), the grid meter (HAS-327), the
 SOLAX (HAS-328), the outages of the grid (HAS-334), the monitor of the sources (HAS-332), the SolaX cloud (HAS-329),
 the SOFAR (HAS-330), the balance, history and days (HAS-331), the production watch (HAS-333), the planned outages of
-Tauron (HAS-337), the charge of the battery (HAS-336) and its automation before an outage (HAS-338), and reviews them in
-IntelliJ.
+Tauron (HAS-337), the charge of the battery (HAS-336) and its automation before an outage (HAS-338), and the daily energy
+summary (HAS-339), and reviews them in IntelliJ.
 
 ## Role in the system
 
@@ -32,7 +32,7 @@ IntelliJ.
   `/notification` (user `notification`, `notification-rabbitmq-password`; HAS-334) - the loss, a low battery and
   the return marked for an SMS; the silence of the SOLAX dongle and the grid meter and the overload of a phase
   (HAS-332), Discord only; the alarms of the SOLAX from the SolaX cloud (HAS-329); the faults of the SOFAR (HAS-330); an inverter that does not produce in the sun (HAS-333); the planned outages of Tauron (HAS-337) - those of the
-  street of the house and their reminders by SMS.
+  street of the house and their reminders by SMS; the daily energy summary (HAS-339), an info at 21:30.
 - Uses libraries: `cholewa-commons` 1.13.0 (the pooled `ConnectionFactory`, the required
   properties, the scheduler pool and `ScheduledPass`, the error contract, `NotificationConnection` and the
   `...Sms` methods of `NotificationPublisher` - HAS-334), `smart-home-sdk` 1.15.0 (the kind
@@ -429,6 +429,22 @@ IntelliJ.
     nothing ahead in its town; then a street of a neighbouring town with a real announcement - both of its outages stored
     (one `street`, one `town`), the notices tried every minute while the broker was missing, `/outages/planned` answering
     them.
+- **The daily energy summary** (HAS-339, package `summary`) - what is easy to break:
+  - `SummaryService` reads what the API answers - "today" of `/flows`, each inverter of `/inverters` and the SOC of
+    `/battery` while not stale, the buckets of `pv-power` since midnight averaged per hour (the peak; a history that
+    cannot be read leaves it out with a WARN), the `silent` episodes of `source_alert` overlapping the day
+    (`findOverlapping`), and the closed days of the month - one query after the other (pool 2). A source silent for more
+    than half of the day so far is said instead of its numbers; the SOFAR is never `silent` (HAS-330), so it is only
+    "not known" while stale.
+  - **The month is the closed days plus today** when the grid of today is known and the meter was not silent - credited
+    = exported x `energy.settlement.ratio`, balance = credited - imported. The credit carried from earlier months is not in
+    it: the settlement with its FIFO is `GET /months`.
+  - `DaySummary` (pure, pinned whole by `DaySummaryTest`) words it - English, one embed, a value not known "not known",
+    never 0. **The text is approved by the owner on a real message** (the DoD): a change of the words is a change of the test.
+  - `SummaryWatch` - a pass a minute, bounded at 50 s: due from `energy.summary.time` (a whole minute, `SummaryPropertiesTest`)
+    until published, a failure tried again with the next pass for an hour, then the day given up with a WARN. The day sent
+    is in memory - **a start after the time takes today for sent**, so a restart never sends a day twice (and a pod down at
+    21:30 sends nothing that day).
 - **The map of type 33** (`Type33`, pinned by `Type33Test` on `src/test/resources/solax/*.json` - answers of
   2026-10-23 19:52, 2026-10-27 20:49, 2026-10-28 10:27 and 2026-10-29 19:09 with invented dongle and inverter serials;
   the last three compared with SolaxCloud (the last one with the Pro 3EM as well), Developer Platform `v2/device/realtime_data` and `v2/plant/realtime_data`, within one
