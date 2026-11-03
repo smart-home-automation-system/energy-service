@@ -215,7 +215,7 @@ inverter (the availability alert covers it), the SOLAX in EPS (the outage alert 
   `reminder-every` (PT1H).
 - **The charge of the battery** (HAS-336): `energy.charge.power-kw` (5, 1 - 10 - the estimate of the window), `margin`
   (PT1H, up to 3 h), `longest` (PT23H, the longest window - the windows of the inverter are times of a day),
-  `delivery-timeout` (PT2M), `baseline` - the Self Use set back after a run: `min-soc` 10, `charge-from-grid` true,
+  `delivery-timeout` (PT2M), `charging-above-watts` (1000 - a charge counts as carried out once the battery charges and the grid imports at this power: the SolaX cloud refuses the result of a command), `baseline` - the Self Use set back after a run: `min-soc` 10, `charge-from-grid` true,
   `charge-upper-soc` 10, `discharge-start` 00:00, `discharge-end` 23:59 (the settings of the owner, read in SolaxCloud on
   2026-11-03). The commands use the credentials of the SolaX cloud above.
 - **The planned outages of Tauron** (HAS-337): `tauron-city`, `tauron-street` and `tauron-house-no` - the address of the
