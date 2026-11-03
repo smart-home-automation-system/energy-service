@@ -23,7 +23,7 @@ final class ChargeSamples {
     //a run of the dashboard to 100 % from 45 %, 14:05 - 19:30, its command sent
     static BatteryChargeRunEntity requested() {
         return new BatteryChargeRunEntity(1L, NOW, "dashboard", 100, NOW.withSecond(0),
-            LocalDateTime.of(2026, 11, 3, 19, 30), "r-1", null, null, 45.0, null, null, null, null, null, null);
+            LocalDateTime.of(2026, 11, 3, 19, 30), "r-1", null, null, 45.0, null, null, null, null, null, null, null);
     }
 
     static BatteryChargeRunEntity charging() {

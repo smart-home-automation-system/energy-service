@@ -44,7 +44,7 @@ final class TauronSamples {
     static PlannedOutageEntity row(final long id, final Announcement announcement) {
         return new PlannedOutageEntity(id, announcement.outageId(), announcement.kind(), announcement.scope(),
             announcement.startsAt(), announcement.endsAt(), announcement.description(), NOW.minusDays(1),
-            NOW.minusHours(1), null, null, null, null, null, null, null, false);
+            NOW.minusHours(1), null, null, null, null, null, null, null, false, null);
     }
 
     //a planned outage of the street told the day before NOW

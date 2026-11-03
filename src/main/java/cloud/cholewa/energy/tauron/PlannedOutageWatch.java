@@ -49,6 +49,7 @@ public class PlannedOutageWatch {
     private final NotificationPublisher notificationPublisher;
     private final TauronProperties properties;
     private final Clock clock;
+    private final OutageLane lane;
     private final AddressMatch match;
     private final NoticeRules noticeRules;
     private final FailureLog failureLog;
@@ -64,13 +65,15 @@ public class PlannedOutageWatch {
         final PlannedOutageRepository repository,
         final NotificationPublisher notificationPublisher,
         final TauronProperties properties,
-        final Clock clock
+        final Clock clock,
+        final OutageLane lane
     ) {
         this.tauronClient = tauronClient;
         this.repository = repository;
         this.notificationPublisher = notificationPublisher;
         this.properties = properties;
         this.clock = clock;
+        this.lane = lane;
         this.match = new AddressMatch(properties.city(), properties.street());
         this.noticeRules = new NoticeRules(properties.reminderAt(), properties.remindBefore());
         this.failureLog = new FailureLog(log, clock);
@@ -79,9 +82,9 @@ public class PlannedOutageWatch {
     @Scheduled(initialDelayString = "PT1M", fixedDelayString = "PT1M")
     Mono<Void> watch() {
         return ScheduledPass.bounded("Planned outage watch", LIMIT,
-            () -> Mono.defer(this::storeUnsaved)
+            () -> lane.serially(Mono.defer(this::storeUnsaved)
                 .then(Mono.defer(this::readIfDue))
-                .then(Mono.defer(this::tell))
+                .then(Mono.defer(this::tell)))
                 .onErrorResume(failure -> Mono.fromRunnable(() -> log.warn(
                     "The planned outages told could not be stored, tried again with the next pass: {}",
                     failure.toString()))));

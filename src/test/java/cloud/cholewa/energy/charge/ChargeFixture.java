@@ -5,7 +5,10 @@ import cloud.cholewa.energy.api.model.BatteryReply;
 import cloud.cholewa.energy.database.BatteryChargeRunEntity;
 import cloud.cholewa.energy.database.BatteryChargeRunRepository;
 import cloud.cholewa.energy.api.model.GridReply;
+import cloud.cholewa.energy.automation.AutomationPlan;
+import cloud.cholewa.energy.database.PlannedOutageRepository;
 import cloud.cholewa.energy.inverter.BatteryService;
+import cloud.cholewa.energy.tauron.OutageLane;
 import cloud.cholewa.energy.meter.GridService;
 import cloud.cholewa.energy.registry.InverterRegistry;
 import cloud.cholewa.energy.solax.SolaxProperties;
@@ -37,6 +40,8 @@ final class ChargeFixture {
     final InverterRegistry registry = mock(InverterRegistry.class);
     final BatteryService batteryService = mock(BatteryService.class);
     final GridService gridService = mock(GridService.class);
+    final PlannedOutageRepository outages = mock(PlannedOutageRepository.class);
+    final AutomationPlan plan = new AutomationPlan();
     final NotificationPublisher publisher = mock(NotificationPublisher.class);
     final BatteryChargeRunRepository repository = mock(BatteryChargeRunRepository.class);
     final Map<Long, BatteryChargeRunEntity> table = new TreeMap<>();
@@ -51,7 +56,7 @@ final class ChargeFixture {
         final SolaxProperties solax = new SolaxProperties(Duration.ofSeconds(15), Duration.ofMinutes(1), 26.5);
         commands = new InverterCommands(client, registry, ChargeSamples.PROPERTIES, SolaxSamples.JSON, clock);
         service = new ChargeService(repository, commands, batteryService, gridService, publisher,
-            ChargeSamples.PROPERTIES, solax, flag, clock);
+            ChargeSamples.PROPERTIES, solax, flag, outages, new OutageLane(), plan, clock);
         watch = new ChargeWatch(repository, commands, service, ChargeSamples.PROPERTIES, flag, clock);
         when(registry.current()).thenReturn(Optional.of(List.of(SolaxSamples.solax("192.0.2.1"))));
         when(registry.of(InverterBrand.SOLAX)).thenReturn(Optional.of(SolaxSamples.solax("192.0.2.1")));
@@ -59,6 +64,7 @@ final class ChargeFixture {
         grid(300.0);
         when(client.setSelfUse(any())).thenReturn(Mono.just("r-1"));
         when(publisher.publishInfo(anyString())).thenReturn(Mono.empty());
+        when(outages.setSkipAutomation(any(), org.mockito.ArgumentMatchers.anyBoolean())).thenReturn(Mono.just(1));
         when(repository.save(any())).thenAnswer(call -> {
             final BatteryChargeRunEntity row = call.getArgument(0);
             final BatteryChargeRunEntity saved = row.id() == null ? row.withId(ids.incrementAndGet()) : row;
@@ -67,6 +73,8 @@ final class ChargeFixture {
         });
         when(repository.findFirstByOrderByRequestedAtDesc()).thenAnswer(call -> Mono.justOrEmpty(table.values().stream()
             .max(Comparator.comparing(BatteryChargeRunEntity::requestedAt))));
+        when(repository.existsByPlannedOutageId(any())).thenAnswer(call -> Mono.just(table.values().stream()
+            .anyMatch(run -> call.getArgument(0).equals(run.plannedOutageId()))));
         when(repository.findByRequestedAtGreaterThanEqualAndRequestedAtLessThanOrderByRequestedAt(any(), any()))
             .thenAnswer(call -> Flux.fromIterable(table.values()));
     }

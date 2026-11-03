@@ -6,7 +6,10 @@ import cloud.cholewa.energy.api.model.ChargeReply;
 import cloud.cholewa.energy.api.model.ChargeRequest;
 import cloud.cholewa.energy.api.model.ChargeRunReply;
 import cloud.cholewa.energy.database.BatteryChargeRunEntity;
+import cloud.cholewa.energy.automation.AutomationPlan;
 import cloud.cholewa.energy.database.BatteryChargeRunRepository;
+import cloud.cholewa.energy.database.PlannedOutageRepository;
+import cloud.cholewa.energy.tauron.OutageLane;
 import cloud.cholewa.energy.error.EnergyException;
 import cloud.cholewa.energy.inverter.BatteryService;
 import cloud.cholewa.energy.meter.GridService;
@@ -49,6 +52,9 @@ public class ChargeService {
     private final ChargeProperties properties;
     private final SolaxProperties solaxProperties;
     private final ChargeWatchFlag watchFlag;
+    private final PlannedOutageRepository plannedOutageRepository;
+    private final OutageLane outageLane;
+    private final AutomationPlan automationPlan;
     private final Clock clock;
 
     private LocalDateTime now() {
@@ -58,6 +64,18 @@ public class ChargeService {
     public Mono<ChargeRunReply> start(final ChargeRequest request, final String source) {
         final ChargeRequest asked = Optional.ofNullable(request).orElse(new ChargeRequest(null, null));
         final int target = Optional.ofNullable(asked.targetSoc()).orElse(DEFAULT_TARGET);
+        return start(target, asked.until(), source, null).map(ChargeService::reply);
+    }
+
+    //the charge the automation starts before a planned outage (HAS-338): to the target until the outage starts, linked to
+    //it - its cancel skips that outage
+    public Mono<BatteryChargeRunEntity> startBefore(final long plannedOutageId, final int target,
+                                                    final LocalDateTime outageStart) {
+        return start(target, outageStart, ChargeRules.AUTOMATION, plannedOutageId);
+    }
+
+    private Mono<BatteryChargeRunEntity> start(final int target, final LocalDateTime until, final String source,
+                                               final Long plannedOutageId) {
         return commands.serially(Mono.fromRunnable(() -> ChargeRules.check(target, source))
             .then(repository.findFirstByOrderByRequestedAtDesc())
             .filter(last -> last.open() || last.restorePending())
@@ -66,19 +84,19 @@ public class ChargeService {
             .filter(allowed -> allowed)
             .switchIfEmpty(Mono.error(EnergyException::writeTooSoon))
             .then(Mono.fromSupplier(commands::serial))
-            .flatMap(serial -> soc().flatMap(soc -> begin(serial, soc, target, asked.until(), source))))
-            .map(ChargeService::reply);
+            .flatMap(serial -> soc().flatMap(soc -> begin(serial, soc, target, until, source, plannedOutageId))));
     }
 
     private Mono<BatteryChargeRunEntity> begin(final String serial, final double soc, final int target,
-                                               final LocalDateTime until, final String source) {
+                                               final LocalDateTime until, final String source,
+                                               final Long plannedOutageId) {
         final LocalDateTime now = now();
         return Mono.just(soc)
             .filter(value -> value < target)
             .switchIfEmpty(Mono.error(() -> EnergyException.targetReached(soc, target)))
             .map(below -> ChargeRules.window(now, soc, target, until, solaxProperties.batteryCapacity(), properties))
             .flatMap(window -> repository.save(new BatteryChargeRunEntity(null, now, source, target, window.start(),
-                    window.end(), null, null, null, soc, null, null, null, null, null, null))
+                    window.end(), null, null, null, soc, null, null, null, null, null, null, plannedOutageId))
                 .flatMap(run -> commands.charge(serial, target, window.start(), window.end())
                     .flatMap(requestId -> repository.save(run.withRequestId(requestId)))
                     .doOnNext(sent -> {
@@ -108,8 +126,23 @@ public class ChargeService {
                     .then(socOrNull())
                     .flatMap(soc -> repository.save(run.withEndedAt(now()).withEndedBy(ChargeRules.BY_CANCEL)
                         .withSocAtEnd(soc.orElse(null))))
-                    .flatMap(this::restore)))
+                    .flatMap(this::restore)
+                    .flatMap(this::skipItsOutage)))
             .map(ChargeService::reply);
+    }
+
+    //the cancel of an automatic run skips its outage (HAS-338): the automation does not start it again
+    private Mono<BatteryChargeRunEntity> skipItsOutage(final BatteryChargeRunEntity run) {
+        return Mono.justOrEmpty(run.plannedOutageId())
+            .flatMap(outageId -> outageLane.serially(plannedOutageRepository.setSkipAutomation(outageId, true))
+                .doOnNext(changed -> log.info("The planned outage {} skipped by the cancel of its charge {}", outageId,
+                    run.id())))
+            .thenReturn(run)
+            .onErrorResume(failure -> Mono.fromCallable(() -> {
+                log.warn("The planned outage {} was not skipped after the cancel of its charge {}: {}",
+                    run.plannedOutageId(), run.id(), failure.toString());
+                return run;
+            }));
     }
 
     //the baseline of Self Use set back after a run, the end told; a baseline the cloud refused stays due and is tried
@@ -134,8 +167,12 @@ public class ChargeService {
             .flatMap(run -> batteryService.battery()
                 .map(battery -> new ChargeReply(true, reply(run), battery.soc(), battery.power(),
                     ChargeRules.minutesLeft(battery.soc(), run.targetSoc(), solaxProperties.batteryCapacity(),
-                        properties).orElse(null))))
-            .defaultIfEmpty(new ChargeReply(false, null, null, null, null));
+                        properties).orElse(null), plannedStart())))
+            .defaultIfEmpty(new ChargeReply(false, null, null, null, null, plannedStart()));
+    }
+
+    private LocalDateTime plannedStart() {
+        return automationPlan.current().map(AutomationPlan.Planned::plannedStart).orElse(null);
     }
 
     //the runs requested in [from, to), the oldest first; from before to, at most 366 days
@@ -164,7 +201,7 @@ public class ChargeService {
     }
 
     //the SOC and the power of the battery and the power of the grid now - what is stale is not known
-    Mono<ChargeRules.Power> power() {
+    public Mono<ChargeRules.Power> power() {
         return batteryService.battery()
             .zipWith(gridService.grid())
             .map(both -> new ChargeRules.Power(
@@ -185,7 +222,7 @@ public class ChargeService {
     static ChargeRunReply reply(final BatteryChargeRunEntity run) {
         return new ChargeRunReply(run.id(), stateOf(run), run.source(), run.requestedAt(), run.targetSoc(),
             run.windowStart(), run.windowEnd(), run.deliveryStatus(), run.deliveredAt(), run.socAtStart(),
-            run.socAtEnd(), run.endedAt(), run.endedBy(), run.failure(), run.restoredAt());
+            run.socAtEnd(), run.endedAt(), run.endedBy(), run.failure(), run.restoredAt(), run.plannedOutageId());
     }
 
     static String stateOf(final BatteryChargeRunEntity run) {

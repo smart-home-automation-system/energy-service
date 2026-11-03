@@ -176,6 +176,30 @@ class ChargeServiceTest {
         verify(fixture.publisher, never()).publishInfo(any());
     }
 
+    //HAS-338: the cancel of an automatic run skips its outage - the automation does not start it again
+    @Test
+    void should_skip_the_outage_of_an_automatic_run_it_cancels() {
+        fixture.table.put(1L, ChargeSamples.charging().withSource("automation").withPlannedOutageId(3L));
+        when(fixture.client.setSelfUse(any())).thenReturn(Mono.just("r-2"));
+
+        fixture.service.cancel().as(StepVerifier::create)
+            .assertNext(reply -> assertThat(reply.plannedOutageId()).isEqualTo(3L))
+            .verifyComplete();
+
+        verify(fixture.outages).setSkipAutomation(3L, true);
+    }
+
+    @Test
+    void should_link_an_automatic_run_to_its_outage() {
+        fixture.service.startBefore(3L, 100, LocalDateTime.of(2026, 11, 3, 20, 0)).as(StepVerifier::create)
+            .assertNext(run -> {
+                assertThat(run.source()).isEqualTo("automation");
+                assertThat(run.plannedOutageId()).isEqualTo(3L);
+                assertThat(run.windowEnd()).isEqualTo(LocalDateTime.of(2026, 11, 3, 20, 0));
+            })
+            .verifyComplete();
+    }
+
     @Test
     void should_refuse_a_cancel_without_a_charge() {
         fixture.service.cancel().as(StepVerifier::create)

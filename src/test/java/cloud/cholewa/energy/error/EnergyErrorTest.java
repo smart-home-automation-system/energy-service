@@ -15,6 +15,6 @@ class EnergyErrorTest {
         assertThat(Arrays.stream(EnergyError.values()).map(ErrorId::codeOf))
             .containsExactly("NOT_FOUND_INVERTER", "REGISTRY_UNAVAILABLE", "INVALID_RANGE", "UNKNOWN_METRIC",
                 "INVALID_CHARGE", "CHARGE_IN_PROGRESS", "TARGET_REACHED", "NOT_FOUND_CHARGE", "WRITE_TOO_SOON",
-                "INVERTER_UNAVAILABLE", "DEVICE_FAILED");
+                "INVERTER_UNAVAILABLE", "DEVICE_FAILED", "INVALID_AUTOMATION", "NOT_FOUND_PLANNED_OUTAGE");
     }
 }
