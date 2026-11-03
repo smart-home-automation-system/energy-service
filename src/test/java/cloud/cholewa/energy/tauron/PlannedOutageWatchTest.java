@@ -251,7 +251,7 @@ class PlannedOutageWatchTest {
             .expectNoEvent(PlannedOutageWatch.LIMIT.minusSeconds(1))
             .thenAwait(Duration.ofSeconds(1))
             .verifyComplete();
-        assertThat(PlannedOutageWatch.LIMIT).isLessThan(Duration.ofMinutes(1));
+        assertThat(Duration.ofMinutes(1)).isGreaterThan(PlannedOutageWatch.LIMIT);
     }
 
     @Test

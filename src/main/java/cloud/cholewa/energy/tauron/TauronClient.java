@@ -20,11 +20,10 @@ import java.util.function.Function;
 
 //The public API of Tauron Dystrybucja (HAS-337), the one the Home Assistant integration Eales/tauron-dystrybucja uses,
 //checked against the site on 2026-11-03. No login.
-//- GET /waapi/enum/geo/cities?partName= - the towns whose name has the phrase (3 letters at least): {GAID, Name, ...}
-//- GET /waapi/enum/geo/streets?partName=&ownerGAID=<the GAID of the town> - its streets: {GAID, Name, ShortName, ...}
-//- GET /waapi/outages/address?cityGAID=&streetGAID=&houseNo=&fromDate=&toDate=&getLightingSupport=true
-//  &getServicedSwitchingoff=true - the outages of [fromDate, toDate] (local times, yyyy-MM-ddTHH:mm:ss): OutageListType,
-//  AddressPoint, IdsWWW and OutageItems (Announcements reads them)
+//The towns come from the path enum/geo/cities by a phrase of their name of 3 letters at least, each with its GAID and
+//Name. The streets of a town come from enum/geo/streets by a phrase and the GAID of the town as ownerGAID, each with its
+//GAID, Name and ShortName. The outages come from outages/address by the GAIDs of the town and the street, the house
+//number and a range of local times, with OutageListType, AddressPoint, IdsWWW and OutageItems, read by Announcement.
 //The JSON is sometimes served as text/plain, so the body is read as text. A new connection for every call, 5 s to connect
 //and 5 s for an answer; nothing retried - the next read comes within the hour. Built from the injected builder: traced
 //and logged by Logbook

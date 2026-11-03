@@ -165,7 +165,7 @@ class AnnouncementRulesTest {
 
         final List<PlannedOutageEntity> rows = reconcile(List.of(untold, town), List.of(), NOW);
 
-        assertThat(rows).allSatisfy(row -> {
+        assertThat(rows).hasSize(2).allSatisfy(row -> {
             assertThat(row.closedAs()).isEqualTo("cancelled");
             assertThat(row.notice()).isNull();
         });
@@ -179,7 +179,7 @@ class AnnouncementRulesTest {
 
         final List<PlannedOutageEntity> rows = reconcile(List.of(goingOn, failure), List.of(), NOW);
 
-        assertThat(rows).allSatisfy(row -> {
+        assertThat(rows).hasSize(2).allSatisfy(row -> {
             assertThat(row.closedAs()).isEqualTo("ended");
             assertThat(row.notice()).isNull();
         });

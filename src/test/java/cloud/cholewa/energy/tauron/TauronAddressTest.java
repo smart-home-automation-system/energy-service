@@ -2,6 +2,7 @@ package cloud.cholewa.energy.tauron;
 
 import cloud.cholewa.energy.solax.SolaxSamples;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.JsonNode;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -30,7 +31,9 @@ class TauronAddressTest {
 
     @Test
     void should_refuse_a_name_the_register_does_not_have() {
-        assertThatThrownBy(() -> TauronAddress.cityOf(SolaxSamples.JSON.readTree("[]"), "Testowo"))
+        final JsonNode none = SolaxSamples.JSON.readTree("[]");
+
+        assertThatThrownBy(() -> TauronAddress.cityOf(none, "Testowo"))
             .isInstanceOf(TauronException.class)
             .hasMessage("Tauron's register has 0 towns of the name of the manifest");
     }
@@ -40,7 +43,9 @@ class TauronAddressTest {
         final String towns = """
             [{"GAID":104,"Name":"Testowo"},{"GAID":105,"Name":"Testowo"}]""";
 
-        assertThatThrownBy(() -> TauronAddress.cityOf(SolaxSamples.JSON.readTree(towns), "Testowo"))
+        final JsonNode two = SolaxSamples.JSON.readTree(towns);
+
+        assertThatThrownBy(() -> TauronAddress.cityOf(two, "Testowo"))
             .isInstanceOf(TauronException.class)
             .hasMessage("Tauron's register has 2 towns of the name of the manifest");
     }

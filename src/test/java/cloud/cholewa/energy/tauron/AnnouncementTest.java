@@ -2,6 +2,7 @@ package cloud.cholewa.energy.tauron;
 
 import cloud.cholewa.energy.solax.SolaxSamples;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.JsonNode;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -32,8 +33,9 @@ class AnnouncementTest {
 
     @Test
     void should_refuse_an_address_tauron_does_not_serve() {
-        assertThatThrownBy(() -> Announcement.of(SolaxSamples.JSON.readTree("{\"IdsWWW\":[0],\"OutageItems\":[]}"),
-            TauronSamples.MATCH, TauronSamples.HOUSE, TauronSamples.NOW))
+        final JsonNode notServed = SolaxSamples.JSON.readTree("{\"IdsWWW\":[0],\"OutageItems\":[]}");
+
+        assertThatThrownBy(() -> Announcement.of(notServed, TauronSamples.MATCH, TauronSamples.HOUSE, TauronSamples.NOW))
             .isInstanceOf(TauronException.class)
             .hasMessage("Tauron does not serve the address of the house");
     }
@@ -41,8 +43,9 @@ class AnnouncementTest {
     //{} decodes into nothing - a failed read, never "no outages"
     @Test
     void should_refuse_an_answer_without_its_outages() {
-        assertThatThrownBy(() -> Announcement.of(SolaxSamples.JSON.readTree("{}"), TauronSamples.MATCH,
-            TauronSamples.HOUSE, TauronSamples.NOW))
+        final JsonNode empty = SolaxSamples.JSON.readTree("{}");
+
+        assertThatThrownBy(() -> Announcement.of(empty, TauronSamples.MATCH, TauronSamples.HOUSE, TauronSamples.NOW))
             .isInstanceOf(TauronException.class)
             .hasMessage("Tauron answered without OutageItems");
     }

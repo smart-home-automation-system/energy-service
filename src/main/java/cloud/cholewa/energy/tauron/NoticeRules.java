@@ -7,13 +7,14 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.Optional;
 
-//What is to be told of one row of planned_outage now (HAS-337), without I/O - at most one notice a row a pass:
-//- a notice pending: new / changed / moved of a planned outage of the street as an alert by SMS, new of a failure of the
-//  street as an alert (Discord), new of the town (planned or a failure) as an info, cancelled as an info; one of an
-//  outage already over is dropped untold (except the cancellation, which is told whenever)
-//- else the reminders of a planned outage of the street told before, both by SMS: from remindBefore ahead of its start
-//  (told less than that ahead - no reminder), and from reminderAt of the day before until then (told after it - none);
-//  a pass that finds both due tells the later one and marks both
+//What is to be told of one row of planned_outage now (HAS-337), without I/O. At most one notice a row a pass.
+//A pending notice comes first. A new, changed or moved planned outage of the street is an alert by SMS, a new failure
+//of the street an alert on Discord, anything new in the town an info, a cancellation an info. The notice of an outage
+//already over is dropped untold, except a cancellation, which is told whenever.
+//Without a pending notice come the reminders of a planned outage of the street told before, both by SMS. One is due
+//from remindBefore ahead of its start, unless it was told later than that. The other is due from reminderAt of the
+//day before until then, unless it was told later than that. A pass that finds both due tells the later one and marks
+//both.
 record NoticeRules(LocalTime reminderAt, Duration remindBefore) {
 
     //NONE - nothing published, the row only stored (a notice of an outage over)
@@ -40,12 +41,19 @@ record NoticeRules(LocalTime reminderAt, Duration remindBefore) {
             case AnnouncementRules.CHANGED -> new Notice(PlannedOutageMessages.changed(row), Channel.ALERT_SMS, told);
             case AnnouncementRules.MOVED -> new Notice(PlannedOutageMessages.moved(row), Channel.ALERT_SMS, told);
             case AnnouncementRules.CANCELLED -> new Notice(PlannedOutageMessages.cancelled(row), Channel.INFO, told);
-            default -> street && planned
-                ? new Notice(PlannedOutageMessages.planned(row), Channel.ALERT_SMS, told)
-                : street
-                ? new Notice(PlannedOutageMessages.failure(row), Channel.ALERT, told)
-                : new Notice(PlannedOutageMessages.inTheTown(row), Channel.INFO, told);
+            default -> fresh(row, told, street, planned);
         });
+    }
+
+    //the first notice: a planned outage of the street by SMS, a failure of the street on Discord, the town an info
+    private static Notice fresh(final PlannedOutageEntity row, final PlannedOutageEntity told, final boolean street,
+                                final boolean planned) {
+        if (!street) {
+            return new Notice(PlannedOutageMessages.inTheTown(row), Channel.INFO, told);
+        }
+        return planned
+            ? new Notice(PlannedOutageMessages.planned(row), Channel.ALERT_SMS, told)
+            : new Notice(PlannedOutageMessages.failure(row), Channel.ALERT, told);
     }
 
     private Optional<Notice> reminder(final PlannedOutageEntity row, final LocalDateTime now) {

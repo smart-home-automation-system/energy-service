@@ -92,12 +92,20 @@ final class AnnouncementRules {
         final boolean newHours = !row.endsAt().equals(announcement.endsAt()) && announcement.plannedForTheStreet()
             && row.notifiedAt() != null;
         final String notice = Optional.ofNullable(row.notice())
-            .orElse(toTheStreet ? NEW : newHours ? CHANGED : null);
+            .orElseGet(() -> noticeOf(toTheStreet, newHours));
         return row.withLastSeenAt(now)
             .withEndsAt(announcement.endsAt())
             .withDescription(announcement.description())
             .withScope(announcement.scope())
             .withNotice(notice);
+    }
+
+    //an outage that came to name the street is told as new, a new end of one told before as changed
+    private static String noticeOf(final boolean toTheStreet, final boolean newHours) {
+        if (toTheStreet) {
+            return NEW;
+        }
+        return newHours ? CHANGED : null;
     }
 
     private static PlannedOutageEntity newRow(final Announcement announcement, final LocalDateTime now,
