@@ -52,7 +52,11 @@ planned outage of Tauron.
   `inverter_reading`, `GET /home/energy/inverters/sofar` and `sofar` in `/status`; its faults told on Discord;
 - **the planned outages of Tauron** (HAS-337): the announcements of Tauron Dystrybucja for the address of the house read
   every hour for 30 days ahead from its public API, stored in `planned_outage`, `GET /home/energy/outages/planned`; a
-  planned outage of the street of the house told by SMS, reminded by SMS the day before at 18:00 and 2 h before it starts.
+  planned outage of the street of the house told by SMS, reminded by SMS the day before at 18:00 and 2 h before it starts;
+- **the charge of the battery from the grid on demand** (HAS-336): `POST /home/energy/battery/charge` sets the Self Use
+  work mode of the SOLAX through the SolaX cloud - the grid allowed up to the target in a window - follows the command,
+  ends the run at its target or the end of its window and sets the Self Use the owner runs back; stored in
+  `battery_charge_run`, told on Discord.
 
 **The outages of the grid** - only the inverter knows the grid: the Pro 3EM goes dark with an empty battery, and the
 cluster runs in the house.
@@ -209,6 +213,11 @@ inverter (the availability alert covers it), the SOLAX in EPS (the outage alert 
   the values of blinds-service and light-service), `internal.service.weather` (`http://localhost:6010` under `local`),
   `energy.production.silence` (PT15M, 5 min - 2 h), `illuminance-threshold` (20 000 lx), `min-power` (100 W),
   `reminder-every` (PT1H).
+- **The charge of the battery** (HAS-336): `energy.charge.power-kw` (5, 1 - 10 - the estimate of the window), `margin`
+  (PT1H, up to 3 h), `longest` (PT23H, the longest window - the windows of the inverter are times of a day),
+  `delivery-timeout` (PT2M), `baseline` - the Self Use set back after a run: `min-soc` 10, `charge-from-grid` true,
+  `charge-upper-soc` 10, `discharge-start` 00:00, `discharge-end` 23:59 (the settings of the owner, read in SolaxCloud on
+  2026-11-03). The commands use the credentials of the SolaX cloud above.
 - **The planned outages of Tauron** (HAS-337): `tauron-city`, `tauron-street` and `tauron-house-no` - the address of the
   house as the register of Tauron names it, the street without "ul." (from the manifest - mandatory, a private fact);
   `energy.tauron.base-url` (`https://www.tauron-dystrybucja.pl`), `interval` (PT1H, 15 min - 24 h), `ahead-days` (30,
@@ -228,6 +237,10 @@ Under the base path `/home/energy`, routed by the gateway by path, every method.
 | `GET` | `/home/energy/outages?from=&to=` | the outages of the grid that started in `[from, to)` (house times, ISO `2026-10-01T00:00:00`), the oldest first: `startedAt`, `endedAt` (left out while it lasts), `socAtStart`, `socAtEnd`, `lowestSoc` (%; a value not known left out). `400 INVALID_RANGE` when `from` is not before `to` or they are more than 366 days apart, `400` without either |
 | `GET` | `/home/energy/outages/planned` | the outages Tauron announces for the house that have not ended, the soonest first (HAS-337): `startsAt`, `endsAt` (house times), `kind` (`planned`, `unplanned` - a failure), `scope` (`street` - the announcement names the street of the house, `town` - the town alone), `description` (the words of Tauron, which streets), `firstSeenAt`, `notifiedAt` (the last notice, left out until one was published), `skipAutomation`; `[]` without one |
 | `GET` | `/home/energy/alerts` | the alarms that last, newest first (HAS-341, the open alarms of the dashboard): `source` (`solax`, `sofar`, `meter`, `phase a` / `b` / `c`), `kind` (`silent`, `overload`, `alarm`, `production`), `openedAt` (house time), `detail` - the name of an alarm as the inverter words it (a SOLAX alarm without its code and start), left out for the other kinds; `[]` without one |
+| `POST` | `/home/energy/battery/charge?source=` | a charge of the battery from the grid (HAS-336), body JSON `{"targetSoc": 10-100, "until": "<house time>"}`, both optional (`{}` - to 100 % within the estimate: the SOC to the target at 5 kW plus an hour, at most 23 h); `source` `dashboard` (default) or `automation`. `202` with the run as requested - the command is followed every 10 s. `400 INVALID_CHARGE`, `409 CHARGE_IN_PROGRESS` (a run open or being set back), `409 TARGET_REACHED`, `429 WRITE_TOO_SOON` (at most one write a minute), `503 INVERTER_UNAVAILABLE` (the SOC not known), `503 REGISTRY_UNAVAILABLE`, `404 NOT_FOUND_INVERTER`, `502 DEVICE_FAILED` (the cloud refused the command) |
+| `DELETE` | `/home/energy/battery/charge` | the charge going on ended and the Self Use of the owner set back; `202` with the run (`ending` while the cloud refused the baseline - tried again every minute); `404 NOT_FOUND_CHARGE`, `429 WRITE_TOO_SOON` |
+| `GET` | `/home/energy/battery/charge` | `active` (always written), `run` - the charge going on or being set back, `soc` and `power` of the battery now, `minutesLeft` to the target; `{"active": false}` without one. A run: `id`, `state` (`requested`, `charging`, `ending`, `ended`, `failed`), `source`, `requestedAt`, `targetSoc`, `windowStart`, `windowEnd`, `deliveryStatus` (1 offline, 2 issuance failed, 3 issued, 4 executing, 5 failed, 6 timeout), `deliveredAt`, `socAtStart`, `socAtEnd`, `endedAt`, `endedBy` (`target`, `window`, `cancel`, `failed`), `failure` (`DEVICE_FAILED`, `INVERTER_UNAVAILABLE`), `restoredAt`; what is not known is left out |
+| `GET` | `/home/energy/battery/charge/runs?from=&to=` | the charges requested in `[from, to)` (house times, at most 366 days), the oldest first, as above; `400 INVALID_RANGE` |
 | `GET` | `/home/energy/flows` | the balance now (HAS-331): `production`, `solaxPv`, `sofarPv`, `gridPower`, `batteryPower`, `houseLoad` (W, the sign convention above); `today` - `production`, `imported`, `exported`, `charged`, `discharged`, `houseLoad` (kWh), `selfConsumption`, `gridShare` (0..1); `inputs` - `grid`, `solax`, `sofar`, `battery`, each with `measuredAt` and `stale`. What depends on an input not known is left out |
 | `GET` | `/home/energy/history?metric=&from=&to=` | one metric in `[from, to)` (house times, at most 31 days) in buckets: `metric`, `from`, `to`, `bucketSeconds` (300, 1800 or 7200 by the length), `points` - `at`, `avg`, `min`, `max` (a sum the average only). Metrics: `grid-power`, `grid-import-energy`, `grid-export-energy` (the counters, kWh - max - min of a bucket is its energy), `pv-solax`, `pv-sofar`, `battery-power`, `battery-soc`, `pv-power`, `house-load`. `400 UNKNOWN_METRIC` naming the metrics there are, `400 INVALID_RANGE`, `503 REGISTRY_UNAVAILABLE` for a metric of an inverter before the registry was read |
 | `GET` | `/home/energy/days?from=&to=` | the closed days of `[from, to]` (ISO dates, at most 366 days): `day`, `solaxYield`, `sofarYield`, `production`, `imported`, `exported`, `charged`, `discharged`, `houseLoad` (kWh), `selfConsumption`, `gridShare` (0..1), `cloudYield`, `cloudImported`, `cloudExported` (the SolaX cloud); a value not established left out. `400 INVALID_RANGE` |
@@ -269,3 +282,7 @@ services needs `GRANT USAGE, CREATE ON SCHEMA public` before the first start, or
   when it was first and last seen, the notice still to be told (`new`, `changed`, `moved`, `cancelled`), the start before
   a move, the last notice and the two reminders, `closed_at` / `closed_as` (`ended`, `cancelled`, `moved`) once no longer
   announced and `skip_automation`; at most one open row an id and a start (a partial unique index).
+- `V11` (HAS-336) `battery_charge_run`: one row a charge of the battery - when and by whom (`dashboard`, `automation`)
+  it was asked, the target SOC and the window, the command and its last status, when the inverter took it, the SOC at the
+  start and at the end, the end (`target`, `window`, `cancel`, `failed`) and its failure, the command that set the
+  baseline back; at most one run without its end (a partial unique index).
