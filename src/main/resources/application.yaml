@@ -151,6 +151,9 @@ energy:
     margin: PT1H
     longest: PT23H
     delivery-timeout: PT2M
+    # the cloud refuses the result of a command (10403, 2026-11-03): a charge counts as carried out once the battery charges
+    # and the house takes from the grid at this power (W) or more
+    charging-above-watts: 1000
     baseline:
       min-soc: 10
       charge-from-grid: true

@@ -1,5 +1,6 @@
 package cloud.cholewa.energy.charge;
 
+import cloud.cholewa.energy.solaxcloud.SolaxCloudException;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
@@ -42,6 +43,42 @@ class ChargeWatchTest {
         });
         verify(fixture.publisher).publishInfo("Battery charging from the grid started (dashboard): 45 % to 100 %, window"
             + " 14:05-19:30.");
+    }
+
+    //the first real run (2026-11-03): the cloud answered the result of the command 10403 while the battery charged at 5.1 kW
+    @Test
+    void should_take_a_charge_from_the_grid_as_carried_out_when_the_cloud_refuses_its_result() {
+        fixture.table.put(1L, ChargeSamples.requested());
+        when(fixture.client.requestStatus("r-1", "H1234567890ABC")).thenReturn(Mono.error(
+            new SolaxCloudException("The SolaX cloud answered code 10403")));
+        fixture.battery(7.0, 5070.0, false);
+        fixture.grid(5900.0);
+        fixture.moveTo(NOW.plusSeconds(20));
+
+        pass();
+
+        assertThat(fixture.only()).satisfies(run -> {
+            assertThat(run.deliveredAt()).isEqualTo(NOW.plusSeconds(20));
+            assertThat(run.deliveryStatus()).isNull();
+            assertThat(run.open()).isTrue();
+        });
+        verify(fixture.client, never()).setSelfUse(any());
+    }
+
+    //unconfirmed after the delivery timeout: failed, the baseline set back, told without blaming the inverter
+    @Test
+    void should_tell_a_charge_not_confirmed_in_time() {
+        fixture.table.put(1L, ChargeSamples.requested());
+        when(fixture.client.requestStatus("r-1", "H1234567890ABC")).thenReturn(Mono.empty());
+        when(fixture.client.setSelfUse(any())).thenReturn(Mono.just("r-2"));
+        fixture.battery(7.0, -30.0, false);
+        fixture.moveTo(NOW.plus(Duration.ofMinutes(2)));
+
+        pass();
+
+        assertThat(fixture.only().socAtEnd()).isEqualTo(7.0);
+        verify(fixture.publisher).publishInfo("Battery charging from the grid ended - the command was not confirmed in time"
+            + " at 7 % (started 14:05 at 45 %); the inverter set back to Self Use.");
     }
 
     //the DoD of HAS-336: a failed delivery (status 5 from a stub) ends the run as failed with DEVICE_FAILED

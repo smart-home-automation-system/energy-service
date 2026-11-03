@@ -70,6 +70,21 @@ class ChargeRulesTest {
         assertThat(ChargeRules.deliveryOf(status, late)).isEqualTo(delivery);
     }
 
+    //owner, 2026-11-03: the cloud refuses the result of a command - the battery charging from the grid confirms it
+    @Test
+    void should_take_the_battery_charging_from_the_grid_as_the_command_carried_out() {
+        assertThat(ChargeRules.deliveryOf(null, false, new ChargeRules.Power(7.0, 5070.0, 5900.0), 1000))
+            .isEqualTo(ChargeRules.Delivery.EXECUTING);
+        //the panels charge the battery - the grid does not import
+        assertThat(ChargeRules.deliveryOf(null, false, new ChargeRules.Power(7.0, 2500.0, -300.0), 1000))
+            .isEqualTo(ChargeRules.Delivery.WAITING);
+        //the house takes from the grid, the battery rests
+        assertThat(ChargeRules.deliveryOf(null, false, new ChargeRules.Power(7.0, -30.0, 960.0), 1000))
+            .isEqualTo(ChargeRules.Delivery.WAITING);
+        assertThat(ChargeRules.deliveryOf(null, true, ChargeRules.Power.NOT_KNOWN, 1000))
+            .isEqualTo(ChargeRules.Delivery.UNCERTAIN);
+    }
+
     @Test
     void should_tell_the_minutes_left() {
         assertThat(ChargeRules.minutesLeft(90.0, 100, CAPACITY, PROPERTIES)).contains(32L);

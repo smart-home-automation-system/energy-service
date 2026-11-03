@@ -101,6 +101,7 @@ class EnergyServiceApplicationTest {
         assertThat(charge.margin()).isEqualTo(Duration.ofHours(1));
         assertThat(charge.longest()).isEqualTo(Duration.ofHours(23));
         assertThat(charge.deliveryTimeout()).isEqualTo(Duration.ofMinutes(2));
+        assertThat(charge.chargingAboveWatts()).isEqualTo(1000);
         assertThat(charge.baseline()).isEqualTo(new ChargeProperties.Baseline(10, true, 10, LocalTime.MIDNIGHT,
             LocalTime.of(23, 59)));
     }

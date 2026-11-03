@@ -4,7 +4,9 @@ import cloud.cholewa.commons.notification.NotificationPublisher;
 import cloud.cholewa.energy.api.model.BatteryReply;
 import cloud.cholewa.energy.database.BatteryChargeRunEntity;
 import cloud.cholewa.energy.database.BatteryChargeRunRepository;
+import cloud.cholewa.energy.api.model.GridReply;
 import cloud.cholewa.energy.inverter.BatteryService;
+import cloud.cholewa.energy.meter.GridService;
 import cloud.cholewa.energy.registry.InverterRegistry;
 import cloud.cholewa.energy.solax.SolaxProperties;
 import cloud.cholewa.energy.solax.SolaxSamples;
@@ -34,6 +36,7 @@ final class ChargeFixture {
     final SolaxCloudClient client = mock(SolaxCloudClient.class);
     final InverterRegistry registry = mock(InverterRegistry.class);
     final BatteryService batteryService = mock(BatteryService.class);
+    final GridService gridService = mock(GridService.class);
     final NotificationPublisher publisher = mock(NotificationPublisher.class);
     final BatteryChargeRunRepository repository = mock(BatteryChargeRunRepository.class);
     final Map<Long, BatteryChargeRunEntity> table = new TreeMap<>();
@@ -47,12 +50,13 @@ final class ChargeFixture {
         moveTo(ChargeSamples.NOW);
         final SolaxProperties solax = new SolaxProperties(Duration.ofSeconds(15), Duration.ofMinutes(1), 26.5);
         commands = new InverterCommands(client, registry, ChargeSamples.PROPERTIES, SolaxSamples.JSON, clock);
-        service = new ChargeService(repository, commands, batteryService, publisher, ChargeSamples.PROPERTIES, solax,
-            flag, clock);
+        service = new ChargeService(repository, commands, batteryService, gridService, publisher,
+            ChargeSamples.PROPERTIES, solax, flag, clock);
         watch = new ChargeWatch(repository, commands, service, ChargeSamples.PROPERTIES, flag, clock);
         when(registry.current()).thenReturn(Optional.of(List.of(SolaxSamples.solax("192.0.2.1"))));
         when(registry.of(InverterBrand.SOLAX)).thenReturn(Optional.of(SolaxSamples.solax("192.0.2.1")));
         battery(45.0, false);
+        grid(300.0);
         when(client.setSelfUse(any())).thenReturn(Mono.just("r-1"));
         when(publisher.publishInfo(anyString())).thenReturn(Mono.empty());
         when(repository.save(any())).thenAnswer(call -> {
@@ -68,8 +72,17 @@ final class ChargeFixture {
     }
 
     void battery(final Double soc, final boolean stale) {
-        when(batteryService.battery()).thenReturn(Mono.just(new BatteryReply(soc, 99.0, 4800.0, null, null, null,
+        battery(soc, 4800.0, stale);
+    }
+
+    void battery(final Double soc, final Double power, final boolean stale) {
+        when(batteryService.battery()).thenReturn(Mono.just(new BatteryReply(soc, 99.0, power, null, null, null,
             null, null, null, null, null, ChargeSamples.NOW, stale, "local")));
+    }
+
+    void grid(final Double power) {
+        when(gridService.grid()).thenReturn(Mono.just(new GridReply(null, power, null, null, null, ChargeSamples.NOW,
+            false)));
     }
 
     void moveTo(final LocalDateTime time) {
