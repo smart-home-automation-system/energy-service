@@ -10,7 +10,8 @@ repository map and working rules come from the workspace-level context
 repository themselves; Claude's default role here is analysis, code review and security
 review - the owner had Claude implement the scaffold (HAS-325), the grid meter (HAS-327), the
 SOLAX (HAS-328), the outages of the grid (HAS-334), the monitor of the sources (HAS-332), the SolaX cloud (HAS-329),
-the SOFAR (HAS-330), the balance, history and days (HAS-331) and the production watch (HAS-333), and reviews them in IntelliJ.
+the SOFAR (HAS-330), the balance, history and days (HAS-331), the production watch (HAS-333) and the planned outages of
+Tauron (HAS-337), and reviews them in IntelliJ.
 
 ## Role in the system
 
@@ -22,16 +23,18 @@ the SOFAR (HAS-330), the balance, history and days (HAS-331) and the production 
   SOLAX over its local API and `database-service` for the inverters of the device registry
   (`GET /home/device/registry?kind=inverter&enabled=true`, HAS-328). The SolaX Developer Platform (HAS-329,
   `openapi-eu.solaxcloud.com`). The Solarman Open API for the SOFAR (HAS-330, `globalapi.solarmanpv.com`). weather-service for the illuminance of the
-  station (HAS-333, `GET /home/weather/current` by k8s DNS).
+  station (HAS-333, `GET /home/weather/current` by k8s DNS). The public API of Tauron Dystrybucja (HAS-337,
+  `www.tauron-dystrybucja.pl`, no login).
 - Publishes: the alerts, reminders and infos of the outages of the grid to the exchange `notification` of
   `/notification` (user `notification`, `notification-rabbitmq-password`; HAS-334) - the loss, a low battery and
   the return marked for an SMS; the silence of the SOLAX dongle and the grid meter and the overload of a phase
-  (HAS-332), Discord only; the alarms of the SOLAX from the SolaX cloud (HAS-329); the faults of the SOFAR (HAS-330); an inverter that does not produce in the sun (HAS-333).
+  (HAS-332), Discord only; the alarms of the SOLAX from the SolaX cloud (HAS-329); the faults of the SOFAR (HAS-330); an inverter that does not produce in the sun (HAS-333); the planned outages of Tauron (HAS-337) - those of the
+  street of the house and their reminders by SMS.
 - Uses libraries: `cholewa-commons` 1.13.0 (the pooled `ConnectionFactory`, the required
   properties, the scheduler pool and `ScheduledPass`, the error contract, `NotificationConnection` and the
   `...Sms` methods of `NotificationPublisher` - HAS-334), `smart-home-sdk` 1.15.0 (the kind
   `inverter` and `InverterBinding`, HAS-326),
-  `shelly-client` 2.3.0 **with its beans on** (`ShellyRpcClient`, `ShellyGen1Client`,
+  `shelly-client` 2.4.0 **with its beans on** (`ShellyRpcClient`, `ShellyGen1Client`,
   `ShellyMqttDecoder`; pinned by `EnergyServiceApplicationTest`) - 2.3.0 brought `EmStatus`, `EmDataStatus`
   and their RPC reads for HAS-327.
 - Database: own database `home-automation-energy`, pool 2 - with it 20 of the 47 connections of the
@@ -314,6 +317,42 @@ the SOFAR (HAS-330), the balance, history and days (HAS-331) and the production 
     (the outage alert); its count starts anew. The counts are in memory; the open rows (`source_alert`, kind `production`,
     V9 - solax / sofar, no detail) are read every pass, and **the table follows the broker**: a row is written only once its
     notice was published.
+- **The planned outages of Tauron** (HAS-337, package `tauron`) - what is easy to break:
+  - **The API** (the one of the Home Assistant integration Eales/tauron-dystrybucja, checked 2026-11-03): `cities?partName=`,
+    `streets?partName=&ownerGAID=<the GAID of the town>` (not its OwnerGAID - that answers an empty list), `outages/address`
+    with local `fromDate` / `toDate`; JSON sometimes as `text/plain` (read as text); `IdsWWW [0]` an address not served; times
+    in UTC; `TypeId` 1 planned / 2 a failure (only while `IsActive`); `OutageId` shared by the days of one work - **an outage
+    is its id and its start**. History is served only about three months back.
+  - **The house has no address point** (checked 2026-11-03): Tauron answers its address with the list of the whole area
+    (`OutageListType` 2, `AddressPoint` null, no outage with `AddressPointIds`) - so `AddressMatch` reads the words (owner,
+    2026-11-03): the town and the street of the house named - `street`, the town alone - `town`, else not stored; words
+    without case, diacritics or punctuation. The address is the manifest's (`tauron-city` / `-street` / `-house-no`,
+    mandatory) and **in no repository** - the samples of `src/test/resources/tauron/` have invented names and no coordinates.
+  - `PlannedOutageWatch` - **one pass a minute** (bounded at 50 s): the read every `interval` (PT1H, `lastReadAt` in memory),
+    then the notices - so the two never write one row at once. The GAIDs resolved at the first read and kept; a failed read
+    one WARN an hour (`FailureLog`), reads failing for `alert-after` (PT24H) an alert, their return an info (in memory: a
+    restart counts anew); a database failure makes the next pass read again. **A told row the database does not take** is
+    held in memory (`unsaved`) and stored first by the next pass, which does nothing else until it is - a notice is never told
+    twice, an SMS every minute while the database is down would cost (a cut of the bound between the publish and the save
+    is the one gap).
+  - `AnnouncementRules` (pure): new - `new`; a new end of one of the street told before - `changed`; the same id at another
+    start while the old one is gone - `moved` (the old closed as moved); a planned one ahead no longer announced - closed
+    `cancelled`, told only for the street once it was told; anything else gone - `ended`, silently. **Gone means missed by
+    two reads in a row** (the set of missed keys in memory, a restart counts anew), at once when it is over or moved - one
+    empty answer of Tauron would otherwise cancel everything and announce it again an hour later.
+  - `NoticeRules` (pure): the planned outage of the street `new` / `changed` / `moved` by `publishAlertSms`, a failure of the
+    street `publishAlert`, the town `publishInfo`, a cancellation `publishInfo` (owner, 2026-11-03: no SMS); the reminders by
+    `publishReminderSms` the day before at `reminder-at` and `remind-before` the start, each only when the last notice came
+    before its time; both due - the later one, both marked. **The table follows the broker**: `notice` cleared and
+    `notified_at` set only once published.
+  - `planned_outage` (V10): `notice`, `closed_as` and the pair `closed_at` / `closed_as` checked; at most one open row an
+    id and a start (partial unique index, `PlannedOutageRepositoryTest` on PostgreSQL). `skip_automation` is for HAS-338.
+  - The words of Tauron (Polish) close the first notice: an SMS with diacritics is UCS-2, about 67 characters a part.
+  - **Rehearsed** (2026-11-03): the released 0.10.0 image applied V1-V9 on a throwaway PostgreSQL with SSL (a user with
+    `USAGE, CREATE` on `public` only), the new jar V10 against the real API of Tauron: the address of the house resolved,
+    nothing ahead in its town; then a street of a neighbouring town with a real announcement - both of its outages stored
+    (one `street`, one `town`), the notices tried every minute while the broker was missing, `/outages/planned` answering
+    them.
 - **The map of type 33** (`Type33`, pinned by `Type33Test` on `src/test/resources/solax/*.json` - answers of
   2026-10-23 19:52, 2026-10-27 20:49, 2026-10-28 10:27 and 2026-10-29 19:09 with invented dongle and inverter serials;
   the last three compared with SolaxCloud (the last one with the Pro 3EM as well), Developer Platform `v2/device/realtime_data` and `v2/plant/realtime_data`, within one
