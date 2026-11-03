@@ -11,7 +11,8 @@ repository themselves; Claude's default role here is analysis, code review and s
 review - the owner had Claude implement the scaffold (HAS-325), the grid meter (HAS-327), the
 SOLAX (HAS-328), the outages of the grid (HAS-334), the monitor of the sources (HAS-332), the SolaX cloud (HAS-329),
 the SOFAR (HAS-330), the balance, history and days (HAS-331), the production watch (HAS-333), the planned outages of
-Tauron (HAS-337) and the charge of the battery (HAS-336), and reviews them in IntelliJ.
+Tauron (HAS-337), the charge of the battery (HAS-336) and its automation before an outage (HAS-338), and reviews them in
+IntelliJ.
 
 ## Role in the system
 
@@ -370,6 +371,28 @@ Tauron (HAS-337) and the charge of the battery (HAS-336), and reviews them in In
     a second open run refused by the index; the endpoints answered without a registry (`503 REGISTRY_UNAVAILABLE`) - no
     write reached the cloud. **The first real charge is run with the owner watching SolaxCloud** (the DoD): the behaviour of
     the inverter after the window and the baseline go into this section.
+- **The automatic charge before a planned outage** (HAS-338, package `automation`) - what is easy to break:
+  - **Only the planned outages of the street** (owner, 2026-11-03 - the ones told by SMS); a failure or the town alone never
+    charges. The switch is off by default (`energy_automation`, V12, one row the migration inserts - a database without it
+    is a failed read, never a default); turning it off cancels no charge running.
+  - `AutomationWatch` - a pass a minute, bounded at 50 s: the next planned outage of the street, still ahead, not skipped,
+    and the SOC (`ChargeService.power` - the dongle, the SolaX cloud while it is stale) give `AutomationRules.plannedStart`
+    (the outage start less the SOC to the target of 26.5 kWh at the charge power, minutes up, less the margin), held in
+    `AutomationPlan` for `GET /battery/charge` and `/outages/planned` whether the switch is on or not. With the switch on and
+    the planned start reached, `ChargeService.startBefore` starts the charge of HAS-336 with source `automation` until the
+    outage starts, linked to it (`battery_charge_run.planned_outage_id`); **a run linked to an outage - ended, cancelled or
+    failed - is never followed by a second one** (`existsByPlannedOutageId`); `planned_outage.charge_run_id` is the same
+    link for reading. The start is an info by SMS; a manual run going on is left alone (one INFO); the SOC not known or a
+    start the cloud refused is one alert (Discord), the "told once" held in memory per outage.
+  - The cancel of an automatic run (`DELETE /battery/charge`) skips its outage (`skip_automation`); the panel skips or allows
+    one ahead with `PUT /outages/planned/{id}/skip` / `unskip` (`NOT_FOUND_PLANNED_OUTAGE` for one not announced).
+  - **One lane for planned_outage** (`OutageLane`): the pass of `PlannedOutageWatch` saves whole rows read a moment before,
+    so the skip and the run link are their own `UPDATE` statements run in the same lane. The lane of the charge may call it,
+    never the other way round.
+  - **Rehearsed** (2026-11-03): the released 0.12.1 image applied V1-V11 on a throwaway PostgreSQL with SSL, the new jar V12:
+    the settings answered off / 100 % / 5 kW / 60 min, a change taken and one out of bounds refused, a skip of an unknown
+    outage 404. The dry run of the DoD is `AutomationWatchTest`: a fake outage, the stubbed cloud, the clock at the planned
+    start - the command sent once.
 - **The planned outages of Tauron** (HAS-337, package `tauron`) - what is easy to break:
   - **The API** (the one of the Home Assistant integration Eales/tauron-dystrybucja, checked 2026-11-03): `cities?partName=`,
     `streets?partName=&ownerGAID=<the GAID of the town>` (not its OwnerGAID - that answers an empty list), `outages/address`
