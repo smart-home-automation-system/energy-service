@@ -112,7 +112,7 @@ final class AnnouncementRules {
                                               final LocalDateTime movedFrom) {
         return new PlannedOutageEntity(null, announcement.outageId(), announcement.kind(), announcement.scope(),
             announcement.startsAt(), announcement.endsAt(), announcement.description(), now, now,
-            movedFrom == null ? NEW : MOVED, movedFrom, null, null, null, null, null, false);
+            movedFrom == null ? NEW : MOVED, movedFrom, null, null, null, null, null, false, null);
     }
 
     private static PlannedOutageEntity closed(final PlannedOutageEntity row, final LocalDateTime now) {

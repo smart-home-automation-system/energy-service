@@ -64,6 +64,15 @@ public class EnergyException extends RuntimeException {
         return new EnergyException(HttpStatus.BAD_GATEWAY, EnergyError.DEVICE_FAILED, message);
     }
 
+    public static EnergyException invalidAutomation(final String message) {
+        return new EnergyException(HttpStatus.BAD_REQUEST, EnergyError.INVALID_AUTOMATION, message);
+    }
+
+    public static EnergyException plannedOutageNotFound(final long id) {
+        return new EnergyException(HttpStatus.NOT_FOUND, EnergyError.NOT_FOUND_PLANNED_OUTAGE,
+            "No planned outage " + id + " is announced");
+    }
+
     public static EnergyException registryUnavailable() {
         return new EnergyException(HttpStatus.SERVICE_UNAVAILABLE, EnergyError.REGISTRY_UNAVAILABLE,
             "The inverters of the device registry are not known yet");

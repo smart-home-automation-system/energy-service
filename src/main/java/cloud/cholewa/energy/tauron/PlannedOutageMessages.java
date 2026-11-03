@@ -9,7 +9,7 @@ import java.util.Locale;
 
 //The words of the notices of the planned outages (HAS-337), English as every alert of the services. The words of Tauron
 //(which streets, in Polish) close the first notice; the reminders leave them out - they go by SMS again
-final class PlannedOutageMessages {
+public final class PlannedOutageMessages {
 
     private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("EEE d MMM", Locale.ENGLISH);
 
@@ -56,7 +56,7 @@ final class PlannedOutageMessages {
     }
 
     //"Thu 12 Nov 08:00-13:00", "Thu 12 Nov 22:00 - Fri 13 Nov 06:00"
-    static String span(final PlannedOutageEntity row) {
+    public static String span(final PlannedOutageEntity row) {
         return row.startsAt().toLocalDate().equals(row.endsAt().toLocalDate())
             ? at(row.startsAt()) + "-" + HouseTimes.hour(row.endsAt())
             : at(row.startsAt()) + " - " + at(row.endsAt());

@@ -42,7 +42,13 @@ public enum EnergyError implements ErrorId {
     INVERTER_UNAVAILABLE("Inverter unavailable"),
 
     //the SolaX cloud refused the command, or the inverter did not carry it out (HAS-336)
-    DEVICE_FAILED("Device failed");
+    DEVICE_FAILED("Device failed"),
+
+    //settings of the automatic charge outside their bounds, or missing (HAS-338)
+    INVALID_AUTOMATION("Invalid automation"),
+
+    //no planned outage still announced has this id (HAS-338)
+    NOT_FOUND_PLANNED_OUTAGE("Planned outage not found");
 
     private final String description;
 }

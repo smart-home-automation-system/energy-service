@@ -30,6 +30,9 @@ import cloud.cholewa.energy.solax.RunMode;
 import cloud.cholewa.energy.status.EnergyStatusService;
 import cloud.cholewa.energy.tauron.PlannedOutageService;
 import cloud.cholewa.energy.charge.ChargeService;
+import cloud.cholewa.energy.automation.AutomationService;
+import cloud.cholewa.energy.api.model.AutomationReply;
+import cloud.cholewa.energy.api.model.AutomationRequest;
 import cloud.cholewa.energy.api.model.ChargeReply;
 import cloud.cholewa.energy.api.model.ChargeRequest;
 import cloud.cholewa.energy.api.model.ChargeRunReply;
@@ -85,17 +88,20 @@ class EnergyControllerTest {
     private PlannedOutageService plannedOutageService;
     @MockitoBean
     private ChargeService chargeService;
+    @MockitoBean
+    private AutomationService automationService;
 
     private static ChargeRunReply chargingRun() {
         return new ChargeRunReply(7L, "charging", "dashboard", LocalDateTime.of(2026, 11, 3, 14, 5, 30), 100,
             LocalDateTime.of(2026, 11, 3, 14, 5), LocalDateTime.of(2026, 11, 3, 18, 0), 4,
-            LocalDateTime.of(2026, 11, 3, 14, 5, 50), 45.0, null, null, null, null, null);
+            LocalDateTime.of(2026, 11, 3, 14, 5, 50), 45.0, null, null, null, null, null, null);
     }
 
     //HAS-336, the contract of the energy panel (HAS-342): the fields of the charge going on, written out whole
     @Test
     void should_answer_the_charge_going_on() {
-        when(chargeService.current()).thenReturn(Mono.just(new ChargeReply(true, chargingRun(), 62.5, 4800.0, 81L)));
+        when(chargeService.current()).thenReturn(Mono.just(new ChargeReply(true, chargingRun(), 62.5, 4800.0, 81L,
+            LocalDateTime.of(2026, 11, 12, 1, 37))));
 
         webTestClient.get().uri("/battery/charge")
             .exchange()
@@ -105,12 +111,13 @@ class EnergyControllerTest {
                  "run": {"id": 7, "state": "charging", "source": "dashboard", "requestedAt": "2026-11-03T14:05:30",
                          "targetSoc": 100, "windowStart": "2026-11-03T14:05:00", "windowEnd": "2026-11-03T18:00:00",
                          "deliveryStatus": 4, "deliveredAt": "2026-11-03T14:05:50", "socAtStart": 45.0},
-                 "soc": 62.5, "power": 4800.0, "minutesLeft": 81}""", JsonCompareMode.STRICT);
+                 "soc": 62.5, "power": 4800.0, "minutesLeft": 81, "plannedStart": "2026-11-12T01:37:00"}""",
+                JsonCompareMode.STRICT);
     }
 
     @Test
     void should_answer_no_charge_as_inactive() {
-        when(chargeService.current()).thenReturn(Mono.just(new ChargeReply(false, null, null, null, null)));
+        when(chargeService.current()).thenReturn(Mono.just(new ChargeReply(false, null, null, null, null, null)));
 
         webTestClient.get().uri("/battery/charge")
             .exchange()
@@ -175,24 +182,69 @@ class EnergyControllerTest {
     @Test
     void should_answer_the_planned_outages() {
         when(plannedOutageService.planned()).thenReturn(Mono.just(List.of(
-            new PlannedOutageReply(LocalDateTime.of(2026, 11, 12, 8, 0), LocalDateTime.of(2026, 11, 12, 13, 0),
+            new PlannedOutageReply(3L, LocalDateTime.of(2026, 11, 12, 8, 0), LocalDateTime.of(2026, 11, 12, 13, 0),
                 "planned", "street", "Testowo ul. Przykładowa", LocalDateTime.of(2026, 11, 3, 15, 0),
-                LocalDateTime.of(2026, 11, 3, 15, 1), false),
-            new PlannedOutageReply(LocalDateTime.of(2026, 11, 18, 8, 0), LocalDateTime.of(2026, 11, 18, 14, 0),
-                "planned", "town", "Testowo ul. Lipowa", LocalDateTime.of(2026, 11, 3, 15, 0), null, false))));
+                LocalDateTime.of(2026, 11, 3, 15, 1), false, LocalDateTime.of(2026, 11, 12, 1, 37)),
+            new PlannedOutageReply(4L, LocalDateTime.of(2026, 11, 18, 8, 0), LocalDateTime.of(2026, 11, 18, 14, 0),
+                "planned", "town", "Testowo ul. Lipowa", LocalDateTime.of(2026, 11, 3, 15, 0), null, false, null))));
 
         webTestClient.get().uri("/outages/planned")
             .exchange()
             .expectStatus().isOk()
             .expectBody().json("""
                 [
-                  {"startsAt": "2026-11-12T08:00:00", "endsAt": "2026-11-12T13:00:00", "kind": "planned",
+                  {"id": 3, "startsAt": "2026-11-12T08:00:00", "endsAt": "2026-11-12T13:00:00", "kind": "planned",
                    "scope": "street", "description": "Testowo ul. Przykładowa", "firstSeenAt": "2026-11-03T15:00:00",
-                   "notifiedAt": "2026-11-03T15:01:00", "skipAutomation": false},
-                  {"startsAt": "2026-11-18T08:00:00", "endsAt": "2026-11-18T14:00:00", "kind": "planned",
+                   "notifiedAt": "2026-11-03T15:01:00", "skipAutomation": false,
+                   "plannedChargeStart": "2026-11-12T01:37:00"},
+                  {"id": 4, "startsAt": "2026-11-18T08:00:00", "endsAt": "2026-11-18T14:00:00", "kind": "planned",
                    "scope": "town", "description": "Testowo ul. Lipowa", "firstSeenAt": "2026-11-03T15:00:00",
                    "skipAutomation": false}
                 ]""", JsonCompareMode.STRICT);
+    }
+
+    //HAS-338, the contract of the energy panel: the switch always written, the time of the last change left out before one
+    @Test
+    void should_answer_the_settings_of_the_automation() {
+        when(automationService.settings()).thenReturn(Mono.just(new AutomationReply(false, 100, 5.0, 60, null)));
+
+        webTestClient.get().uri("/automation")
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody().json("""
+                {"chargeBeforeOutage": false, "targetSoc": 100, "chargePowerKw": 5.0, "marginMinutes": 60}""",
+                JsonCompareMode.STRICT);
+    }
+
+    @Test
+    void should_replace_the_settings_of_the_automation() {
+        when(automationService.replace(new AutomationRequest(true, 90, 4.5, 30)))
+            .thenReturn(Mono.just(new AutomationReply(true, 90, 4.5, 30, LocalDateTime.of(2026, 11, 3, 15, 0))));
+
+        webTestClient.put().uri("/automation")
+            .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+            .bodyValue("{\"chargeBeforeOutage\": true, \"targetSoc\": 90, \"chargePowerKw\": 4.5, \"marginMinutes\": 30}")
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody().jsonPath("$.chargeBeforeOutage").isEqualTo(true);
+    }
+
+    @Test
+    void should_skip_and_allow_again_an_outage() {
+        final PlannedOutageReply skipped = new PlannedOutageReply(3L, LocalDateTime.of(2026, 11, 12, 8, 0),
+            LocalDateTime.of(2026, 11, 12, 13, 0), "planned", "street", "Testowo", LocalDateTime.of(2026, 11, 3, 15, 0),
+            null, true, null);
+        when(plannedOutageService.skip(3L, true)).thenReturn(Mono.just(skipped));
+        when(plannedOutageService.skip(3L, false)).thenReturn(Mono.error(EnergyException.plannedOutageNotFound(3L)));
+
+        webTestClient.put().uri("/outages/planned/3/skip")
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody().jsonPath("$.skipAutomation").isEqualTo(true);
+        webTestClient.put().uri("/outages/planned/3/unskip")
+            .exchange()
+            .expectStatus().isNotFound()
+            .expectBody().jsonPath("$.errors[0].code").isEqualTo("NOT_FOUND_PLANNED_OUTAGE");
     }
 
     //HAS-341: the open alarms - the detail of an alarm written out, left out for the other kinds

@@ -16,7 +16,7 @@ import java.util.Set;
 //A run ends by its target once the SOC reaches it, by its window once the window is over.
 //The delivery of a command: 4 is the inverter carrying it out; 1 offline, 2 issuance failed, 5 failed and 6 timed out
 //end the run; 3 (issued) and no entry wait until the delivery timeout
-final class ChargeRules {
+public final class ChargeRules {
 
     static final String DASHBOARD = "dashboard";
     static final String AUTOMATION = "automation";
@@ -91,7 +91,7 @@ final class ChargeRules {
     enum Delivery { EXECUTING, OFFLINE, NOT_TAKEN, UNCERTAIN, WAITING }
 
     //the battery and the grid now, null what is not known or not fresh
-    record Power(Double soc, Double battery, Double grid) {
+    public record Power(Double soc, Double battery, Double grid) {
 
         static final Power NOT_KNOWN = new Power(null, null, null);
 

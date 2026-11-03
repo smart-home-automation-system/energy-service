@@ -26,7 +26,8 @@ public record BatteryChargeRunEntity(
     @Column("ended_by") String endedBy,
     @Column("failure") String failure,
     @Column("restore_request_id") String restoreRequestId,
-    @Column("restored_at") LocalDateTime restoredAt
+    @Column("restored_at") LocalDateTime restoredAt,
+    @Column("planned_outage_id") Long plannedOutageId
 ) {
 
     //a run that charges or waits for its command - no end yet

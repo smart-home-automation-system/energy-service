@@ -2,6 +2,8 @@ package cloud.cholewa.energy.api;
 
 import cloud.cholewa.energy.alert.AlertService;
 import cloud.cholewa.energy.api.model.AlertReply;
+import cloud.cholewa.energy.api.model.AutomationReply;
+import cloud.cholewa.energy.api.model.AutomationRequest;
 import cloud.cholewa.energy.api.model.BatteryReply;
 import cloud.cholewa.energy.api.model.ChargeReply;
 import cloud.cholewa.energy.api.model.ChargeRequest;
@@ -15,6 +17,7 @@ import cloud.cholewa.energy.api.model.MonthsReply;
 import cloud.cholewa.energy.api.model.OutageReply;
 import cloud.cholewa.energy.api.model.PlannedOutageReply;
 import cloud.cholewa.energy.api.model.StatusReply;
+import cloud.cholewa.energy.automation.AutomationService;
 import cloud.cholewa.energy.charge.ChargeService;
 import cloud.cholewa.energy.days.DaysService;
 import cloud.cholewa.energy.flows.FlowsService;
@@ -31,6 +34,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -59,6 +63,7 @@ public class EnergyController {
     private final AlertService alertService;
     private final PlannedOutageService plannedOutageService;
     private final ChargeService chargeService;
+    private final AutomationService automationService;
 
     //every source of energy with whether it answers - the contract of the availability card of the dashboard - and
     //the grid as the SOLAX sees it (HAS-334)
@@ -98,6 +103,28 @@ public class EnergyController {
     @GetMapping("outages/planned")
     Mono<List<PlannedOutageReply>> plannedOutages() {
         return plannedOutageService.planned();
+    }
+
+    //the automatic charge skipped for an outage, or allowed again (HAS-338)
+    @PutMapping("outages/planned/{id}/skip")
+    Mono<PlannedOutageReply> skipOutage(@PathVariable final long id) {
+        return plannedOutageService.skip(id, true);
+    }
+
+    @PutMapping("outages/planned/{id}/unskip")
+    Mono<PlannedOutageReply> unskipOutage(@PathVariable final long id) {
+        return plannedOutageService.skip(id, false);
+    }
+
+    //the settings of the automatic charge before a planned outage, the switch first (HAS-338)
+    @GetMapping("automation")
+    Mono<AutomationReply> automation() {
+        return automationService.settings();
+    }
+
+    @PutMapping("automation")
+    Mono<AutomationReply> replaceAutomation(@RequestBody final AutomationRequest request) {
+        return automationService.replace(request);
     }
 
     //the alarms that last, newest first - the open alarms of the dashboard (HAS-341)

@@ -11,7 +11,8 @@ import java.time.LocalDateTime;
 //kind planned / unplanned; scope street (the street of the house named) / town (the town alone). notice - what is still
 //to be told (new, changed, moved, cancelled), null when nothing is; movedFrom - the start before a move. notifiedAt - the
 //last notice published; the two reminders of a planned outage of the street; closedAt / closedAs (ended, cancelled,
-//moved) once it is no longer announced. skipAutomation - for the charge of the battery before an outage (HAS-338)
+//moved) once it is no longer announced. skipAutomation - no automatic charge for it (HAS-338); chargeRunId - the run the
+//automation started for it (V12), never a second one
 @With
 @Table("planned_outage")
 public record PlannedOutageEntity(
@@ -31,6 +32,7 @@ public record PlannedOutageEntity(
     @Column("before_start_reminded_at") LocalDateTime beforeStartRemindedAt,
     @Column("closed_at") LocalDateTime closedAt,
     @Column("closed_as") String closedAs,
-    @Column("skip_automation") boolean skipAutomation
+    @Column("skip_automation") boolean skipAutomation,
+    @Column("charge_run_id") Long chargeRunId
 ) {
 }

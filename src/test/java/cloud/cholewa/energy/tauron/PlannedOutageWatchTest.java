@@ -42,7 +42,7 @@ class PlannedOutageWatchTest {
     private final Map<Long, PlannedOutageEntity> table = new TreeMap<>();
     private final AtomicLong ids = new AtomicLong();
     private final PlannedOutageWatch watch = new PlannedOutageWatch(client, repository, publisher,
-        TauronSamples.properties(URI.create("http://localhost:1")), clock);
+        TauronSamples.properties(URI.create("http://localhost:1")), clock, new OutageLane());
 
     @BeforeEach
     void setUp() {
