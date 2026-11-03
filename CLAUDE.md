@@ -356,7 +356,16 @@ Tauron (HAS-337) and the charge of the battery (HAS-336), and reviews them in In
     baseline again (00:00 - 00:00 force charge, 00:00 - 23:59 discharge, period 2 off). Since then (owner, 2026-11-03) a
     charge counts as carried out also once **the battery charges and the 3EM imports at `charging-above-watts` (1 kW) or
     more** - the panels never make the grid import, so a PV charge is not taken for it; the refused result is one WARN an
-    hour (`FailureLog`). The cancel and the behaviour after a window still to be checked on the next run.
+    hour (`FailureLog`).
+  - **The second real run** (0.12.1, 2026-11-03 13:41, the owner watching): to 12 % in a 30 min window - **seen as charging
+    after 12 s** (5.08 kW, the battery and the import of the 3EM), told on Discord; cancelled by `DELETE` at 10 % (the owner
+    wanted the battery at 10 %, it sat at 7 %): the baseline sent at once, **the charge stopped within 13 s**, the run
+    `ended` / `cancel`. **What the inverter does after a window on its own is not relied on**: every end - target,
+    window, cancel, a failure that may have been taken - sets the baseline back (owner, 2026-11-03), and the baseline stops
+    a charge within 13 - 20 s (both runs).
+  - Why the battery sits at 7 % below Min SOC 10 %: the baseline has no charge window, so "Charge Battery To 10 %" never
+    acts (the reading of 2026-11-03, not a fact of the documentation) - changing it is a change of the baseline, the owner's
+    call; `energy.charge.baseline` follows it.
   - **Rehearsed** (2026-11-03): the released 0.11.0 image applied V1-V10 on a throwaway PostgreSQL with SSL, the new jar V11;
     a second open run refused by the index; the endpoints answered without a registry (`503 REGISTRY_UNAVAILABLE`) - no
     write reached the cloud. **The first real charge is run with the owner watching SolaxCloud** (the DoD): the behaviour of
