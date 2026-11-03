@@ -34,8 +34,8 @@ public record ChargeProperties(
     @NotNull @Valid Baseline baseline
 ) {
 
-    //minSoc - the floor of the battery; chargeFromGrid / chargeUpperSoc - the grid charge the inverter keeps by itself;
-    //dischargeStart / dischargeEnd - the window the battery may give the house in
+    //The floor of the battery, the grid charge the inverter keeps by itself and its limit, and the window the battery may
+    //give the house in
     public record Baseline(
         @NotNull @Min(10) @Max(100) Integer minSoc,
         @NotNull Boolean chargeFromGrid,

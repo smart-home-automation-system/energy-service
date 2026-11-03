@@ -73,7 +73,7 @@ final class ChargeRules {
         if (soc != null && soc >= run.targetSoc()) {
             return Optional.of(BY_TARGET);
         }
-        return !now.isBefore(run.windowEnd()) ? Optional.of(BY_WINDOW) : Optional.empty();
+        return now.isBefore(run.windowEnd()) ? Optional.empty() : Optional.of(BY_WINDOW);
     }
 
     //where a run is: its command not yet carried out, charging, ended without its baseline set back, or over

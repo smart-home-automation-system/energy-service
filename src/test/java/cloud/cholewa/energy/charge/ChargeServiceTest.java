@@ -1,6 +1,7 @@
 package cloud.cholewa.energy.charge;
 
 import cloud.cholewa.energy.api.model.ChargeRequest;
+import cloud.cholewa.energy.api.model.ChargeRunReply;
 import cloud.cholewa.energy.error.EnergyError;
 import cloud.cholewa.energy.error.EnergyException;
 import cloud.cholewa.energy.solaxcloud.SolaxCloudException;
@@ -215,7 +216,7 @@ class ChargeServiceTest {
             .verifyErrorSatisfies(failure -> refusedWith(failure, EnergyError.INVALID_RANGE));
         fixture.table.put(1L, ChargeSamples.charging());
         fixture.service.runs(NOW.minusDays(1), NOW.plusDays(1)).as(StepVerifier::create)
-            .assertNext(runs -> assertThat(runs).extracting(reply -> reply.id()).isEqualTo(List.of(1L)))
+            .assertNext(runs -> assertThat(runs).extracting(ChargeRunReply::id).isEqualTo(List.of(1L)))
             .verifyComplete();
     }
 }

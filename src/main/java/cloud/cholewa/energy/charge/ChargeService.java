@@ -114,7 +114,7 @@ public class ChargeService {
     //again by the watch
     Mono<BatteryChargeRunEntity> restore(final BatteryChargeRunEntity run) {
         return Mono.fromCallable(commands::serial)
-            .flatMap(serial -> commands.restore(serial))
+            .flatMap(commands::restore)
             .flatMap(requestId -> repository.save(run.withRestoreRequestId(requestId).withRestoredAt(now())))
             .flatMap(restored -> tell(ChargeMessages.ended(restored)).thenReturn(restored))
             .doOnNext(restored -> log.info("Battery charge {} ended ({}), the baseline of Self Use set back, command {}",

@@ -20,6 +20,7 @@ final class SelfUseCommand {
     private static final DateTimeFormatter HH_MM = DateTimeFormatter.ofPattern("HH:mm", Locale.ROOT);
     private static final String MIDNIGHT = "00:00";
     private static final String LAST_MINUTE = "23:59";
+    private static final String PERIOD_2 = "enableTimePeriod2";
 
     private SelfUseCommand() {
     }
@@ -33,9 +34,9 @@ final class SelfUseCommand {
             .put("chargeStartTimePeriod1", HH_MM.format(start))
             .put("chargeEndTimePeriod1", acrossMidnight ? LAST_MINUTE : HH_MM.format(end));
         if (!acrossMidnight) {
-            return body.put("enableTimePeriod2", 0);
+            return body.put(PERIOD_2, 0);
         }
-        return body.put("enableTimePeriod2", 1)
+        return body.put(PERIOD_2, 1)
             .put("chargeStartTimePeriod2", MIDNIGHT)
             .put("chargeEndTimePeriod2", HH_MM.format(end))
             .put("dischargeStartTimePeriod2", HH_MM.format(baseline.dischargeStart()))
@@ -48,7 +49,7 @@ final class SelfUseCommand {
             .put("chargeUpperSoc", baseline.chargeUpperSoc())
             .put("chargeStartTimePeriod1", MIDNIGHT)
             .put("chargeEndTimePeriod1", MIDNIGHT)
-            .put("enableTimePeriod2", 0);
+            .put(PERIOD_2, 0);
     }
 
     private static ObjectNode common(final JsonMapper json, final String serial,

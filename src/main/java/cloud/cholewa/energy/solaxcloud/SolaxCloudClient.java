@@ -46,6 +46,7 @@ public class SolaxCloudClient {
     static final int SUCCESS = 10000;
     static final int INVALID_TOKEN = 10402;
     private static final String BUSINESS_TYPE = "businessType";
+    private static final String RESULT = "result";
     private static final String INVERTER = "1";
     private static final String BATTERY = "2";
 
@@ -137,7 +138,7 @@ public class SolaxCloudClient {
     public Mono<Integer> requestStatus(final String requestId, final String serialNumber) {
         return call(value -> postRequest("/openapi/apiRequestLog/listByCondition",
                 jsonMapper.createObjectNode().put("requestId", requestId), value))
-            .flatMapIterable(root -> root.path("result"))
+            .flatMapIterable(root -> root.path(RESULT))
             .filter(entry -> serialNumber.equals(entry.path("sn").asString("")))
             .next()
             .map(entry -> entry.path("status").asInt(0))
@@ -147,7 +148,7 @@ public class SolaxCloudClient {
     private Mono<JsonNode> get(final Function<UriBuilder, URI> uri) {
         return call(value -> webClient.get().uri(uri).header("Authorization", "bearer " + value)
                 .accept(MediaType.APPLICATION_JSON))
-            .map(root -> root.path("result"));
+            .map(root -> root.path(RESULT));
     }
 
     private WebClient.RequestHeadersSpec<?> postRequest(final String path, final JsonNode body, final String token) {
@@ -212,7 +213,7 @@ public class SolaxCloudClient {
             .bodyToMono(String.class)
             .switchIfEmpty(Mono.error(() -> new SolaxCloudException("The SolaX cloud answered no token")))
             .map(this::tree)
-            .flatMap(root -> Mono.justOrEmpty(Optional.of(root.path("result"))
+            .flatMap(root -> Mono.justOrEmpty(Optional.of(root.path(RESULT))
                     .filter(result -> !result.path("access_token").asString("").isBlank())
                     .map(result -> new Token(result.path("access_token").asString(),
                         clock.instant().plusSeconds(result.path("expires_in").asLong(0)))))
