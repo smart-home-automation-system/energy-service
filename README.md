@@ -60,7 +60,11 @@ planned outage of Tauron.
 - **the automatic charge before a planned outage** (HAS-338), behind a switch off by default: for the next planned outage
   of the street the start is computed every minute from the SOC, the target, the charge power and the margin, and with the
   switch on the charge starts then - once an outage, until the outage starts, told by SMS; the panel skips an outage or
-  cancels the charge (which skips its outage).
+  cancels the charge (which skips its outage);
+- **the daily energy summary** (HAS-339): at 21:30 of the house one info on Discord - the production of each inverter and
+  the hour with the most of it, the house load and its self-consumption, the grid imported and exported, the battery
+  charged, discharged and its SOC now, and the month so far (the export credited at the ratio of the agreement less the
+  import, in kWh); a value not known is said so, and a source silent for most of the day is said instead of its numbers.
 
 **The outages of the grid** - only the inverter knows the grid: the Pro 3EM goes dark with an empty battery, and the
 cluster runs in the house.
@@ -226,6 +230,7 @@ inverter (the availability alert covers it), the SOLAX in EPS (the outage alert 
   house as the register of Tauron names it, the street without "ul." (from the manifest - mandatory, a private fact);
   `energy.tauron.base-url` (`https://www.tauron-dystrybucja.pl`), `interval` (PT1H, 15 min - 24 h), `ahead-days` (30,
   1 - 60), `alert-after` (PT24H, 1 h - 7 days), `reminder-at` (18:00), `remind-before` (PT2H, 30 min - 6 h).
+- **The daily summary** (HAS-339): `energy.summary.time` (21:30, a whole minute of the house time).
 
 # API
 

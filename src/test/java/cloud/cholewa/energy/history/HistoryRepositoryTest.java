@@ -257,4 +257,28 @@ class HistoryRepositoryTest {
         energyDayRepository.findByDayBetweenOrderByDay(LocalDate.of(2026, 11, 1), LocalDate.of(2026, 11, 1))
             .as(StepVerifier::create).expectNext(day).verifyComplete();
     }
+
+    //HAS-339: the silences of a day - an episode that started the day before and one that lasts overlap it, one closed
+    //before midnight and one opened after the end do not, nor another kind
+    @Test
+    void should_answer_the_episodes_of_a_kind_that_overlap_a_range() {
+        execute("DELETE FROM source_alert");
+        execute("INSERT INTO source_alert (source, kind, opened_at, closed_at) VALUES "
+            + "('meter', 'silent', '2026-11-01 22:00', '2026-11-02 03:00')");
+        execute("INSERT INTO source_alert (source, kind, opened_at) VALUES ('solax', 'silent', '2026-11-02 12:00')");
+        execute("INSERT INTO source_alert (source, kind, opened_at, closed_at) VALUES "
+            + "('meter', 'silent', '2026-11-01 10:00', '2026-11-01 23:00')");
+        execute("INSERT INTO source_alert (source, kind, opened_at, closed_at) VALUES "
+            + "('meter', 'silent', '2026-11-02 21:40', '2026-11-02 21:50')");
+        execute("INSERT INTO source_alert (source, kind, opened_at) VALUES ('phase b', 'overload', '2026-11-02 10:00')");
+
+        sourceAlertRepository.findOverlapping("silent", LocalDateTime.of(2026, 11, 2, 0, 0),
+                LocalDateTime.of(2026, 11, 2, 21, 30))
+            .map(SourceAlertEntity::source)
+            .sort()
+            .as(StepVerifier::create)
+            .expectNext("meter", "solax")
+            .verifyComplete();
+        execute("DELETE FROM source_alert");
+    }
 }
