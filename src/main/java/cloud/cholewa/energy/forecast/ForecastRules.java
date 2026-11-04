@@ -10,9 +10,9 @@ import java.util.List;
 import java.util.Objects;
 
 //The coming days judged against the house load (HAS-372), pure:
-//- the reference is the mean house_load of the closed days given (the last seven, fewer when fewer exist); without one
-//  no day has a coverage nor a category;
-//- coverage = the kWh of the day / the reference; the category by the bands, each "below" exclusive;
+//- the reference is the mean house load of the closed days given (the last seven, fewer when fewer exist), and without
+//  one no day has a coverage nor a category
+//- the coverage is the kWh of the day divided by the reference, its category by the bands, each "below" exclusive
 //- sunBackOn - the first day that is fair or good, null when none of the days is; daysWithoutSun - the days before it,
 //  every day given when none is sunny; both null without a category on any day
 public final class ForecastRules {
