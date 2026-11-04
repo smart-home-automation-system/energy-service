@@ -65,6 +65,11 @@ planned outage of Tauron.
   the hour with the most of it, the house load and its self-consumption, the grid imported and exported, the battery
   charged, discharged and its SOC now, and the month so far (the export credited at the ratio of the agreement less the
   import, in kWh); a value not known is said so, and a source silent for most of the day is said instead of its numbers.
+- **the irradiance forecast of the panels** (HAS-371, the first step of the production forecast of HAS-370): every hour
+  the seven-day hourly forecast of [Open-Meteo](https://open-meteo.com) (no key, non-commercial use) for each plane of
+  panels - the irradiance on the plane, on the ground, the cloud cover, the temperature and the snowfall - stored in
+  `pv_forecast` (V13) by the hour it covers; an hour keeps the forecast made before it started. Nothing is served or
+  told yet: the judgement of the days and `GET /forecast` come with HAS-372.
 
 **The outages of the grid** - only the inverter knows the grid: the Pro 3EM goes dark with an empty battery, and the
 cluster runs in the house.
@@ -164,7 +169,8 @@ MQTT firmware, tcp/8899 is closed - there is no local path):
   oldest credit first, the rest bought; by whole months from the first closed day - the house's estimate, not the
   invoice. The billing year starts in `energy.settlement.period-start` (September).
 - **The retention**: every night at 03:20 the readings older than `energy.history.retention` (730 days) are deleted in
-  batches of 5000, never the latest row of a table or an inverter; the days are kept forever.
+  batches of 5000, never the latest row of a table or an inverter; the days are kept forever. The forecast of
+  `pv_forecast` is kept 60 days.
 
 **The inverter that does not produce in the sun** (HAS-333): every minute the sun above the horizon (sunrise to sunset
 at the house - the civil dawn and dusk outside), the illuminance of the weather station (`GET /home/weather/current` of
@@ -231,6 +237,10 @@ inverter (the availability alert covers it), the SOLAX in EPS (the outage alert 
   `energy.tauron.base-url` (`https://www.tauron-dystrybucja.pl`), `interval` (PT1H, 15 min - 24 h), `ahead-days` (30,
   1 - 60), `alert-after` (PT24H, 1 h - 7 days), `reminder-at` (18:00), `remind-before` (PT2H, 30 min - 6 h).
 - **The daily summary** (HAS-339): `energy.summary.time` (21:30, a whole minute of the house time).
+- **The irradiance forecast** (HAS-371): the planes of the panels from the manifest - mandatory, no default, no secret:
+  `pv-solax-tilt`, `pv-solax-azimuth`, `pv-solax-peak-kwp` and the same for `sofar` (tilt 0 - 90 degrees from the
+  horizontal, azimuth -180 - 180 as Open-Meteo counts it, 0 south, -90 east; the peak power in kWp, above 0);
+  `energy.forecast.interval` (PT1H, 15 min - 6 h, a bare number is minutes), `energy.forecast.base-url`.
 
 # API
 

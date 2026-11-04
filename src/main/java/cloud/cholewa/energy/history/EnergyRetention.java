@@ -16,7 +16,8 @@ import java.time.LocalDateTime;
 //Every night at 03:20 house time the readings older than energy.history.retention (730 days) are deleted from
 //grid_reading, inverter_reading and battery_reading (HAS-331) - never the latest row of a table (of an inverter), which a
 //sum of the history carries its value from. In batches of BATCH rows, one table after the other, so a pass never holds a
-//connection of the pool of 2 for long; the days of energy_day are kept forever. "Now" is read inside the chain. A failed
+//connection of the pool of 2 for long; the days of energy_day are kept forever. The forecast of pv_forecast older than
+//FORECAST_RETENTION (60 days, HAS-371) is deleted after them, in one statement - two rows an hour, about 3000 rows. "Now" is read inside the chain. A failed
 //delete is a WARN, tried again the next night; bounded at LIMIT, the next night goes on
 @Slf4j
 @Component
@@ -25,6 +26,7 @@ public class EnergyRetention {
 
     static final Duration LIMIT = Duration.ofMinutes(15);
     static final int BATCH = 5000;
+    static final Duration FORECAST_RETENTION = Duration.ofDays(60);
 
     private static final String DELETE_GRID = """
         DELETE FROM grid_reading WHERE id IN (
@@ -61,9 +63,18 @@ public class EnergyRetention {
             .concatMap(sql -> deleteAll(sql, before))
             .reduce(0L, Long::sum)
             .doOnNext(deleted -> log.info("Energy readings measured before {} deleted: {}", before, deleted))
+            .then(deleteForecast(LocalDateTime.now(clock).minus(FORECAST_RETENTION)))
             .onErrorResume(failure -> Mono.fromRunnable(() -> log.warn(
                 "Energy readings past the retention could not be deleted, tried again tomorrow: {}", failure.toString())))
             .then();
+    }
+
+    private Mono<Long> deleteForecast(final LocalDateTime before) {
+        return databaseClient.sql("DELETE FROM pv_forecast WHERE hour < :before")
+            .bind("before", before)
+            .fetch()
+            .rowsUpdated()
+            .doOnNext(deleted -> log.info("PV forecast hours before {} deleted: {}", before, deleted));
     }
 
     //batch after batch until one deletes fewer than BATCH rows

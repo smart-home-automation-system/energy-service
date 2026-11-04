@@ -11,8 +11,8 @@ repository themselves; Claude's default role here is analysis, code review and s
 review - the owner had Claude implement the scaffold (HAS-325), the grid meter (HAS-327), the
 SOLAX (HAS-328), the outages of the grid (HAS-334), the monitor of the sources (HAS-332), the SolaX cloud (HAS-329),
 the SOFAR (HAS-330), the balance, history and days (HAS-331), the production watch (HAS-333), the planned outages of
-Tauron (HAS-337), the charge of the battery (HAS-336) and its automation before an outage (HAS-338), and the daily energy
-summary (HAS-339), and reviews them in IntelliJ.
+Tauron (HAS-337), the charge of the battery (HAS-336) and its automation before an outage (HAS-338), the daily energy
+summary (HAS-339) and the irradiance forecast (HAS-371), and reviews them in IntelliJ.
 
 ## Role in the system
 
@@ -25,7 +25,7 @@ summary (HAS-339), and reviews them in IntelliJ.
   (`GET /home/device/registry?kind=inverter&enabled=true`, HAS-328). The SolaX Developer Platform (HAS-329,
   `openapi-eu.solaxcloud.com`). The Solarman Open API for the SOFAR (HAS-330, `globalapi.solarmanpv.com`). weather-service for the illuminance of the
   station (HAS-333, `GET /home/weather/current` by k8s DNS). The public API of Tauron Dystrybucja (HAS-337,
-  `www.tauron-dystrybucja.pl`, no login).
+  `www.tauron-dystrybucja.pl`, no login). The forecast API of Open-Meteo (HAS-371, `api.open-meteo.com`, no key).
 - Writes: the Self Use work mode of the SOLAX through the SolaX cloud - a charge from the grid and the baseline after it
   (HAS-336), at most one command a minute.
 - Publishes: the alerts, reminders and infos of the outages of the grid to the exchange `notification` of
@@ -445,6 +445,36 @@ summary (HAS-339), and reviews them in IntelliJ.
     until published, a failure tried again with the next pass for an hour, then the day given up with a WARN. The day sent
     is in memory - **a start after the time takes today for sent**, so a restart never sends a day twice (and a pod down at
     21:30 sends nothing that day).
+- **The irradiance forecast** (HAS-371, package `forecast`, the first step of the production forecast of HAS-370) - what is
+  easy to break:
+  - **The radiation of Open-Meteo is the mean of the hour BEFORE its time** ("averaged over the past hour", the docs read
+    2026-11-03): the value at 11:00 covers 10:00 - 11:00, so `OpenMeteoClient` stores it at 10:00, the start of the hour -
+    as the history and `energy_day` count hours. Checked on the rehearsal: the rows of 10:00 - 13:00 of 2026-11-04 equal
+    the ISO answer of 11:00 - 14:00 to the tenth of a W/m2, both planes.
+  - **The times are asked as unix seconds** (`timeformat=unixtime`) and turned into the house time by the client: the ISO
+    times keep the offset of the moment of the request across a change of the clocks. On the night the clocks go back the
+    two hours from 02:00 share one house time - the later one wins (both 0 at night; pinned by `OpenMeteoClientTest`). Seven
+    days from today's midnight, so the last hour of the seventh day (23:00) is not in the answer.
+  - **The model answers a radiation a little below 0 at night** (-1 W/m2 of `shortwave_radiation`, seen on the rehearsal) -
+    read as 0; the temperature is taken as it comes. The checks of `pv_forecast` would refuse a negative radiation, and a
+    refused row ends the rest of its plane for that fetch.
+  - `ForecastFetch` - 10 s after the start and every `energy.forecast.interval` (PT1H, `timeUnit = MINUTES` like the
+    readers), bounded at 5 min, the SOLAX plane then the SOFAR, each with its own `onErrorResume`. **Only the hours not yet
+    started are written**, one statement a row (about 145 a plane), and the upsert of `PvForecastRepository` changes a row
+    only while its hour is after the fetch: **what the forecast said before an hour is what the calibration of HAS-372
+    compares** - never rewrite it. A failure is one WARN an hour a plane (`FailureLog`, one per plane), a store failure with
+    the class only (never the statement or the row); `ForecastState` holds the last fetch and whether the last one failed.
+    Nothing is published - a forecast is not a device of the house.
+  - `pv_forecast` (V13): the key is the hour and the inverter (`solax` / `sofar`, checked) - Spring Data R2DBC does not map
+    a composite key, hence the SQL of `PvForecastRepository`; `findBetween` orders by the hour, then the inverter (`sofar`
+    first). Kept 60 days (`EnergyRetention`, after the readings).
+  - The planes are the manifest's (`pv-solax-tilt` / `-azimuth` / `-peak-kwp` and the same for `sofar`, mandatory - the
+    owner, 2026-11-03: SOLAX on the roof 35 degrees, SOFAR on the ground 37 degrees, both south, 8.24 and 5 kWp); not the
+    registry. The coordinates are `energy.location.*`.
+  - Logbook logs both answers whole every hour (about 10 kB each) - the org rule keeps full bodies.
+  - **Rehearsed** (2026-11-03): the released 0.14.0 image applied V1-V12 on a throwaway PostgreSQL with SSL (a user with
+    `USAGE, CREATE` on `public` only), the new jar V13 with the real Open-Meteo: 143 hours a plane stored, from the first hour
+    not started to the end of the seventh day; the first run stopped at the -1 W/m2 of the model, which led to the rule above.
 - **The map of type 33** (`Type33`, pinned by `Type33Test` on `src/test/resources/solax/*.json` - answers of
   2026-10-23 19:52, 2026-10-27 20:49, 2026-10-28 10:27 and 2026-10-29 19:09 with invented dongle and inverter serials;
   the last three compared with SolaxCloud (the last one with the Pro 3EM as well), Developer Platform `v2/device/realtime_data` and `v2/plant/realtime_data`, within one
