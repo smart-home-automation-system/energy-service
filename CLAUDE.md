@@ -12,7 +12,8 @@ review - the owner had Claude implement the scaffold (HAS-325), the grid meter (
 SOLAX (HAS-328), the outages of the grid (HAS-334), the monitor of the sources (HAS-332), the SolaX cloud (HAS-329),
 the SOFAR (HAS-330), the balance, history and days (HAS-331), the production watch (HAS-333), the planned outages of
 Tauron (HAS-337), the charge of the battery (HAS-336) and its automation before an outage (HAS-338), the daily energy
-summary (HAS-339) and the irradiance forecast (HAS-371), and reviews them in IntelliJ.
+summary (HAS-339), the irradiance forecast (HAS-371) and its judgement and calibration (HAS-372), and reviews them in
+IntelliJ.
 
 ## Role in the system
 
@@ -475,6 +476,37 @@ summary (HAS-339) and the irradiance forecast (HAS-371), and reviews them in Int
   - **Rehearsed** (2026-11-03): the released 0.14.0 image applied V1-V12 on a throwaway PostgreSQL with SSL (a user with
     `USAGE, CREATE` on `public` only), the new jar V13 with the real Open-Meteo: 143 hours a plane stored, from the first hour
     not started to the end of the seventh day; the first run stopped at the -1 W/m2 of the model, which led to the rule above.
+- **The judgement and the calibration of the forecast** (HAS-372, package `forecast`, `GET /forecast` - the contract of
+  the dashboard task HAS-373) - what is easy to break:
+  - `ForecastModel` (pure): the kWh of an hour = the peak power x the irradiance / 1000 x the ratio - the mean W/m2 of an
+    hour is its Wh/m2, the peak power is rated at 1000 W/m2. **The ratio is never stored with the forecast**: applied on
+    read, so a new calibration changes every answer (and `past`) at once.
+  - `ForecastCalibration` runs **every hour** (5 min after the start), not once at 01:00 as the task said: `DayCloser`
+    closes a day within the hour after 00:15 at no fixed minute, so a fixed time could run before it and lose a day. A pass
+    makes a row of `pv_forecast_day` (V14) of every closed day of the window (`calibration-days`, 28) not there yet whose
+    inverter has a production (`solax_yield` / `sofar_yield` - the PV yield of the day, not the AC output) and an
+    irradiance for **every house time of the day**: 24, 23 when summer time starts, 24 when it ends too - the doubled
+    02:00 is one row of `pv_forecast` (an elapsed-hours count would never match it and the day would be skipped every
+    year). Then the ratio = the sum of the productions / the sum of the forecasts at 1.0, clamped 0.3 - 1.0; below
+    `min-calibration-days` (5) the initial ratio, stored with 0 days. The upsert of `pv_forecast_calibration` changes a row
+    only when the ratio or the days moved, so `calibrated_at` is when it last moved. A day in the window without a whole
+    forecast is read again every pass (cheap; ends once the forecast is older than the window).
+  - **GET /forecast reads the ratio from `pv_forecast_calibration`**, not from memory as the task said - a start then
+    answers the calibrated ratio at once, not the initial one until the first pass.
+  - A day an inverter was down or curtailed counts like any other, as the snow does (accepted, HAS-372); the clamp bounds it.
+  - `ForecastRules` (pure): the reference is the mean `house_load` of the last seven closed days (`findTop7...`; the days
+    without one left out, none - no coverage, no category, no outlook); the bands are exclusive below
+    (`OutlookProperties`, validated ascending); `sunBackOn` the first fair or good day, `daysWithoutSun` the days before it
+    - all seven when none is sunny. Words are composed by the dashboard.
+  - `ForecastService`: four queries one after the other (the ratios, the forecast of seven days - one read covers the
+    48 hours too, the last seven closed days, the last two calibrated days). Today counts all its stored hours, the ones
+    gone included. `cloudCover` is the mean over the hours with some irradiance on the ground, `sunshineHours` the hours
+    above 120 W/m2 on the ground (the WMO threshold of direct sunlight), both from the SOLAX rows (one sky). `fetchedAt`
+    is the older fetch of the two planes in memory (`ForecastState`), so `stale` is true after a start until both fetched.
+  - `OutlookProperties` binds the same prefix as `ForecastProperties`, each its own keys.
+  - **Rehearsed** (2026-11-04): the released 0.15.0 image applied V1-V13 on a throwaway PostgreSQL with SSL, the new jar V14
+    and fetched the real Open-Meteo: `GET /home/energy/forecast` answered seven days (44 kWh on the clear 5th at 0.8, 6 - 11
+    on the cloudy days), 47 hours, the initial ratios, no category (no closed day in that database).
 - **The map of type 33** (`Type33`, pinned by `Type33Test` on `src/test/resources/solax/*.json` - answers of
   2026-10-23 19:52, 2026-10-27 20:49, 2026-10-28 10:27 and 2026-10-29 19:09 with invented dongle and inverter serials;
   the last three compared with SolaxCloud (the last one with the Pro 3EM as well), Developer Platform `v2/device/realtime_data` and `v2/plant/realtime_data`, within one

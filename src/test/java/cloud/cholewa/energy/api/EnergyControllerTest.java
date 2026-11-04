@@ -6,6 +6,9 @@ import cloud.cholewa.energy.api.model.BatteryDirection;
 import cloud.cholewa.energy.api.model.BatteryReply;
 import cloud.cholewa.energy.api.model.DayReply;
 import cloud.cholewa.energy.api.model.FlowsReply;
+import cloud.cholewa.energy.api.model.ForecastReply;
+import cloud.cholewa.energy.forecast.ForecastCategory;
+import cloud.cholewa.energy.forecast.ForecastService;
 import cloud.cholewa.energy.api.model.HistoryReply;
 import cloud.cholewa.energy.api.model.MonthsReply;
 import cloud.cholewa.energy.api.model.GridDirection;
@@ -90,6 +93,8 @@ class EnergyControllerTest {
     private ChargeService chargeService;
     @MockitoBean
     private AutomationService automationService;
+    @MockitoBean
+    private ForecastService forecastService;
 
     private static ChargeRunReply chargingRun() {
         return new ChargeRunReply(7L, "charging", "dashboard", LocalDateTime.of(2026, 11, 3, 14, 5, 30), 100,
@@ -590,5 +595,50 @@ class EnergyControllerTest {
                 {"year": 2026, "from": "2026-09", "to": "2027-08", "ratio": 0.7,
                  "months": [{"month": "2026-10", "days": 0, "credited": 0, "drawn": 0, "bought": 0, "expired": 0,
                              "stored": 55.00}]}""", JsonCompareMode.STRICT);
+    }
+
+    //HAS-372, the contract of the dashboard (HAS-373): the categories in lower case, a value not known left out, stale
+    //always written
+    @Test
+    void should_answer_the_forecast() {
+        final LocalDate today = LocalDate.of(2026, 11, 4);
+        when(forecastService.forecast()).thenReturn(Mono.just(new ForecastReply(
+            LocalDateTime.of(2026, 11, 4, 10, 2, 35), false, 12.0, 7,
+            new ForecastReply.Ratios(new ForecastReply.Ratio(0.62, 9), new ForecastReply.Ratio(0.8, 0)),
+            List.of(new ForecastReply.Day(today, 3.5, 1.8, 5.3, 0.44, ForecastCategory.FAIR, 50.0, 2),
+                new ForecastReply.Day(today.plusDays(1), null, null, null, null, null, null, null)),
+            List.of(new ForecastReply.Past(today.minusDays(1), new ForecastReply.Compared(4.0, 3.9), null)),
+            List.of(new ForecastReply.Hour(LocalDateTime.of(2026, 11, 4, 10, 0), 1.5, 0.8, 30.0)),
+            new ForecastReply.Outlook(today, 0))));
+
+        webTestClient.get().uri("/forecast")
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody().json("""
+                {"fetchedAt": "2026-11-04T10:02:35", "stale": false, "houseLoadKwh": 12.0, "houseLoadDays": 7,
+                 "performanceRatio": {"solax": {"ratio": 0.62, "calibratedOnDays": 9},
+                                      "sofar": {"ratio": 0.8, "calibratedOnDays": 0}},
+                 "days": [{"day": "2026-11-04", "solaxKwh": 3.5, "sofarKwh": 1.8, "totalKwh": 5.3, "coverage": 0.44,
+                           "category": "fair", "cloudCover": 50.0, "sunshineHours": 2},
+                          {"day": "2026-11-05"}],
+                 "past": [{"day": "2026-11-03", "solax": {"forecastKwh": 4.0, "actualKwh": 3.9}}],
+                 "hourly": [{"hour": "2026-11-04T10:00:00", "solaxKw": 1.5, "sofarKw": 0.8, "cloudCover": 30.0}],
+                 "outlook": {"sunBackOn": "2026-11-04", "daysWithoutSun": 0}}""", JsonCompareMode.STRICT);
+    }
+
+    @Test
+    void should_write_stale_without_a_fetch() {
+        when(forecastService.forecast()).thenReturn(Mono.just(new ForecastReply(null, true, null, null,
+            new ForecastReply.Ratios(new ForecastReply.Ratio(0.8, 0), new ForecastReply.Ratio(0.8, 0)), List.of(),
+            List.of(), List.of(), null)));
+
+        webTestClient.get().uri("/forecast")
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody().json("""
+                {"stale": true,
+                 "performanceRatio": {"solax": {"ratio": 0.8, "calibratedOnDays": 0},
+                                      "sofar": {"ratio": 0.8, "calibratedOnDays": 0}},
+                 "days": [], "past": [], "hourly": []}""", JsonCompareMode.STRICT);
     }
 }

@@ -10,6 +10,7 @@ import cloud.cholewa.energy.api.model.ChargeRequest;
 import cloud.cholewa.energy.api.model.ChargeRunReply;
 import cloud.cholewa.energy.api.model.DayReply;
 import cloud.cholewa.energy.api.model.FlowsReply;
+import cloud.cholewa.energy.api.model.ForecastReply;
 import cloud.cholewa.energy.api.model.GridReply;
 import cloud.cholewa.energy.api.model.HistoryReply;
 import cloud.cholewa.energy.api.model.InverterReply;
@@ -21,6 +22,7 @@ import cloud.cholewa.energy.automation.AutomationService;
 import cloud.cholewa.energy.charge.ChargeService;
 import cloud.cholewa.energy.days.DaysService;
 import cloud.cholewa.energy.flows.FlowsService;
+import cloud.cholewa.energy.forecast.ForecastService;
 import cloud.cholewa.energy.history.HistoryService;
 import cloud.cholewa.energy.inverter.BatteryService;
 import cloud.cholewa.energy.inverter.InverterService;
@@ -64,6 +66,7 @@ public class EnergyController {
     private final PlannedOutageService plannedOutageService;
     private final ChargeService chargeService;
     private final AutomationService automationService;
+    private final ForecastService forecastService;
 
     //every source of energy with whether it answers - the contract of the availability card of the dashboard - and
     //the grid as the SOLAX sees it (HAS-334)
@@ -200,5 +203,12 @@ public class EnergyController {
     @GetMapping("months")
     Mono<MonthsReply> months(@RequestParam final int year) {
         return daysService.months(year);
+    }
+
+    //the solar of the coming days: kWh per inverter and day against the house load of the last week, calibrated on the
+    //closed days, the next 48 hours, the last two days compared (HAS-372)
+    @GetMapping("forecast")
+    Mono<ForecastReply> forecast() {
+        return forecastService.forecast();
     }
 }
