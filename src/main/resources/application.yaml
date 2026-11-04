@@ -173,6 +173,20 @@ energy:
   # the daily energy summary (HAS-339): an info at this house time, a whole minute
   summary:
     time: "21:30"
+  # the irradiance forecast of the two planes of panels (HAS-371): Open-Meteo, no key, fetched every interval (a bare
+  # number is minutes). The planes from the manifest - no default: tilt from the horizontal 0-90, azimuth 0 south
+  # (-90 east, 90 west), the peak power of the panels in kWp
+  forecast:
+    base-url: https://api.open-meteo.com
+    interval: PT1H
+    solax:
+      tilt: ${pv-solax-tilt}
+      azimuth: ${pv-solax-azimuth}
+      peak-kwp: ${pv-solax-peak-kwp}
+    sofar:
+      tilt: ${pv-sofar-tilt}
+      azimuth: ${pv-sofar-azimuth}
+      peak-kwp: ${pv-sofar-peak-kwp}
 
 # the notifications of the outages (HAS-334): the exchange is on the same broker as spring.rabbitmq.*, on its own
 # virtual host - a second connection (NotificationRabbitConfig); env is one of the two headers it routes by.
@@ -229,6 +243,18 @@ cholewa:
       variable: tauron-street
     - property: energy.tauron.house-no
       variable: tauron-house-no
+    - property: energy.forecast.solax.tilt
+      variable: pv-solax-tilt
+    - property: energy.forecast.solax.azimuth
+      variable: pv-solax-azimuth
+    - property: energy.forecast.solax.peak-kwp
+      variable: pv-solax-peak-kwp
+    - property: energy.forecast.sofar.tilt
+      variable: pv-sofar-tilt
+    - property: energy.forecast.sofar.azimuth
+      variable: pv-sofar-azimuth
+    - property: energy.forecast.sofar.peak-kwp
+      variable: pv-sofar-peak-kwp
 
 server:
   port: 6200
@@ -355,6 +381,17 @@ energy:
     city: Testowo
     street: Przykładowa
     house-no: "1"
+  # Open-Meteo at an address nothing listens on, planes that are not the ones of the house
+  forecast:
+    base-url: http://localhost:1
+    solax:
+      tilt: 30
+      azimuth: 0
+      peak-kwp: 1
+    sofar:
+      tilt: 30
+      azimuth: 0
+      peak-kwp: 1
 
 internal:
   service:

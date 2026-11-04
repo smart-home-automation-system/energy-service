@@ -89,7 +89,14 @@ class EnergyServiceApplicationTest {
         assertThat(required(14)).containsExactly("energy.tauron.city", "tauron-city");
         assertThat(required(15)).containsExactly("energy.tauron.street", "tauron-street");
         assertThat(required(16)).containsExactly("energy.tauron.house-no", "tauron-house-no");
-        assertThat(applicationContext.getEnvironment().getProperty("cholewa.required-properties[17].property")).isNull();
+        //HAS-371: the planes of the panels for the irradiance forecast (the manifest, no secret)
+        assertThat(required(17)).containsExactly("energy.forecast.solax.tilt", "pv-solax-tilt");
+        assertThat(required(18)).containsExactly("energy.forecast.solax.azimuth", "pv-solax-azimuth");
+        assertThat(required(19)).containsExactly("energy.forecast.solax.peak-kwp", "pv-solax-peak-kwp");
+        assertThat(required(20)).containsExactly("energy.forecast.sofar.tilt", "pv-sofar-tilt");
+        assertThat(required(21)).containsExactly("energy.forecast.sofar.azimuth", "pv-sofar-azimuth");
+        assertThat(required(22)).containsExactly("energy.forecast.sofar.peak-kwp", "pv-sofar-peak-kwp");
+        assertThat(applicationContext.getEnvironment().getProperty("cholewa.required-properties[23].property")).isNull();
     }
 
     //HAS-336: the charge at 5 kW plus an hour, at most 23 h, the command given two minutes; the baseline of Self Use the
