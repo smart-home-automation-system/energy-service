@@ -187,6 +187,18 @@ energy:
       tilt: ${pv-sofar-tilt}
       azimuth: ${pv-sofar-azimuth}
       peak-kwp: ${pv-sofar-peak-kwp}
+    # GET /forecast (HAS-372): the share of the potential of the panels an inverter is taken to produce until it is
+    # calibrated on the closed days (0.3-1.0); the window of the calibration in days (7-90) and the fewest days that
+    # replace the initial ratio; a forecast older than stale-after is stale (1-24 h); the coverage of the mean house
+    # load of the last week below which a day is none, poor or fair (ascending) - good from fair-below on
+    initial-performance-ratio: 0.8
+    calibration-days: 28
+    min-calibration-days: 5
+    stale-after: PT3H
+    bands:
+      none-below: 0.10
+      poor-below: 0.40
+      fair-below: 0.80
 
 # the notifications of the outages (HAS-334): the exchange is on the same broker as spring.rabbitmq.*, on its own
 # virtual host - a second connection (NotificationRabbitConfig); env is one of the two headers it routes by.

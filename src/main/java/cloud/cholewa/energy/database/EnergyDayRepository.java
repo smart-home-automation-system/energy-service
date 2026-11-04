@@ -15,6 +15,9 @@ public interface EnergyDayRepository extends ReactiveCrudRepository<EnergyDayEnt
     //every day up to "to", oldest first - the settlement carries the credit of every month before
     Flux<EnergyDayEntity> findByDayLessThanEqualOrderByDay(LocalDate to);
 
+    //the last seven closed days before "day", newest first - the house load the forecast is judged against (HAS-372)
+    Flux<EnergyDayEntity> findTop7ByDayLessThanOrderByDayDesc(LocalDate day);
+
     @Query("SELECT max(day) FROM energy_day")
     Mono<LocalDate> findLastDay();
 }

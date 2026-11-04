@@ -68,8 +68,13 @@ planned outage of Tauron.
 - **the irradiance forecast of the panels** (HAS-371, the first step of the production forecast of HAS-370): every hour
   the seven-day hourly forecast of [Open-Meteo](https://open-meteo.com) (no key, non-commercial use) for each plane of
   panels - the irradiance on the plane, on the ground, the cloud cover, the temperature and the snowfall - stored in
-  `pv_forecast` (V13) by the hour it covers; an hour keeps the forecast made before it started. Nothing is served or
-  told yet: the judgement of the days and `GET /forecast` come with HAS-372.
+  `pv_forecast` (V13) by the hour it covers; an hour keeps the forecast made before it started.
+- **will the solar work in the coming days** (HAS-372): `GET /forecast` turns the stored forecast into kWh per inverter
+  and day (the peak power x the irradiance / 1000 x the performance ratio of the inverter), judges each of the seven days
+  against the mean house load of the last week (none / poor / fair / good) and names the day the sun comes back. The
+  ratio starts at 0.8 and is calibrated every hour on the closed days of the last 28 with a production and a whole day of
+  forecast (`pv_forecast_day`, V14): what the inverter produced over what the forecast gave, clamped 0.3 - 1.0, from five
+  days on (`pv_forecast_calibration`).
 
 **The outages of the grid** - only the inverter knows the grid: the Pro 3EM goes dark with an empty battery, and the
 cluster runs in the house.
@@ -170,7 +175,7 @@ MQTT firmware, tcp/8899 is closed - there is no local path):
   invoice. The billing year starts in `energy.settlement.period-start` (September).
 - **The retention**: every night at 03:20 the readings older than `energy.history.retention` (730 days) are deleted in
   batches of 5000, never the latest row of a table or an inverter; the days are kept forever. The forecast of
-  `pv_forecast` is kept 60 days.
+  `pv_forecast` is kept 60 days; its calibrated days (`pv_forecast_day`) forever.
 
 **The inverter that does not produce in the sun** (HAS-333): every minute the sun above the horizon (sunrise to sunset
 at the house - the civil dawn and dusk outside), the illuminance of the weather station (`GET /home/weather/current` of
@@ -241,6 +246,9 @@ inverter (the availability alert covers it), the SOLAX in EPS (the outage alert 
   `pv-solax-tilt`, `pv-solax-azimuth`, `pv-solax-peak-kwp` and the same for `sofar` (tilt 0 - 90 degrees from the
   horizontal, azimuth -180 - 180 as Open-Meteo counts it, 0 south, -90 east; the peak power in kWp, above 0);
   `energy.forecast.interval` (PT1H, 15 min - 6 h, a bare number is minutes), `energy.forecast.base-url`.
+- **The judgement of the forecast** (HAS-372): `energy.forecast.initial-performance-ratio` (0.8, 0.3 - 1.0),
+  `calibration-days` (28, 7 - 90), `min-calibration-days` (5, at most `calibration-days`), `stale-after` (PT3H, 1 - 24 h),
+  `bands.none-below` / `poor-below` / `fair-below` (0.10 / 0.40 / 0.80 of the house load, ascending).
 
 # API
 
@@ -267,6 +275,7 @@ Under the base path `/home/energy`, routed by the gateway by path, every method.
 | `GET` | `/home/energy/history?metric=&from=&to=` | one metric in `[from, to)` (house times, at most 31 days) in buckets: `metric`, `from`, `to`, `bucketSeconds` (300, 1800 or 7200 by the length), `points` - `at`, `avg`, `min`, `max` (a sum the average only). Metrics: `grid-power`, `grid-import-energy`, `grid-export-energy` (the counters, kWh - max - min of a bucket is its energy), `pv-solax`, `pv-sofar`, `battery-power`, `battery-soc`, `pv-power`, `house-load`. `400 UNKNOWN_METRIC` naming the metrics there are, `400 INVALID_RANGE`, `503 REGISTRY_UNAVAILABLE` for a metric of an inverter before the registry was read |
 | `GET` | `/home/energy/days?from=&to=` | the closed days of `[from, to]` (ISO dates, at most 366 days): `day`, `solaxYield`, `sofarYield`, `production`, `imported`, `exported`, `charged`, `discharged`, `houseLoad` (kWh), `selfConsumption`, `gridShare` (0..1), `cloudYield`, `cloudImported`, `cloudExported` (the SolaX cloud); a value not established left out. `400 INVALID_RANGE` |
 | `GET` | `/home/energy/months?year=` | the billing year from `period-start` of `year` (2026: September 2026 - August 2027): `year`, `from`, `to` (`yyyy-MM`), `ratio`, `months` - `month`, `days` (closed), `production`, `imported`, `exported`, `houseLoad` (left out without a day), `credited`, `drawn`, `bought`, `expired`, `stored` (kWh) |
+| `GET` | `/home/energy/forecast` | the solar of the coming days (HAS-372, house times): `fetchedAt` (the older fetch of both planes), `stale` (always written: no fetch, or older than `stale-after`), `houseLoadKwh` / `houseLoadDays` (the mean house load of the last closed days), `performanceRatio` - `solax`, `sofar`: `ratio`, `calibratedOnDays` (0: the initial ratio); `days` - seven from today: `day`, `solaxKwh`, `sofarKwh`, `totalKwh`, `coverage` (of the house load), `category` (`none`, `poor`, `fair`, `good`), `cloudCover` (% while the sun is up), `sunshineHours` (above 120 W/m2 on the ground); `past` - the last two calibrated days: `day`, `solax` / `sofar` - `forecastKwh` (at the ratio in use), `actualKwh`; `hourly` - the next 48 hours from the hour now: `hour`, `solaxKw`, `sofarKw`, `cloudCover`; `outlook` - `sunBackOn` (the first fair or good day), `daysWithoutSun`. A value not known is left out |
 
 # Database
 
