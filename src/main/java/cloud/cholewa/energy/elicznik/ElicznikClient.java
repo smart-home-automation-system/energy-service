@@ -22,19 +22,27 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.regex.MatchResult;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-//The eLicznik portal of Tauron Dystrybucja (HAS-340) - no official API: the requests of the Python elicznik scraper and
-//the Tauron AMIplus integration of Home Assistant (both after Tauron moved its login to Keycloak, June 2026), checked in the
-//owner's browser on 2026-11-10. A login:
-//  GET  <login-url>?service=<service-url> -> the CAS endpoint of the Keycloak realm, its form kc-form-login;
-//  POST the form action: username, password, credentialId -> back to the portal with a ticket, its session cookie;
-//  POST /ustaw_punkt site[client]=<meter> - the point of the meter, as the portal does when one is chosen;
-//then POST /energia/api (the hours) and POST /odczyty/api (the registers), form-encoded. Redirects are followed here, not
-//by the client, so the cookies of every host are kept (CookieJar); a new connection for every request, nothing retried.
-//A refused login answers the form again; a blocked account the page /blokada or "Przekroczono maksymalną liczbę logowań".
-//What fails is an ElicznikException naming the step - never an answer of the portal, the account or the password
+/**
+ * The eLicznik portal of Tauron Dystrybucja (HAS-340) - no official API: the requests of the Python elicznik scraper and
+ * the Tauron AMIplus integration of Home Assistant (both after Tauron moved its login to Keycloak, June 2026), checked in
+ * the owner's browser on 2026-11-10. A login is three steps:
+ * <ol>
+ *   <li>a GET of the login URL with the portal as its service - the CAS endpoint of the Keycloak realm answers its form
+ *   {@code kc-form-login};</li>
+ *   <li>a POST of the form action with the account and an empty credential id - back to the portal with a ticket and
+ *   its session cookie;</li>
+ *   <li>a POST of the point of the meter to {@code /ustaw_punkt}, as the portal does when one is chosen.</li>
+ * </ol>
+ * Then {@code /energia/api} answers the hours and {@code /odczyty/api} the registers, both posted form-encoded. Redirects
+ * are followed here, not by the client, so the cookies of every host are kept ({@link CookieJar}); a new connection for
+ * every request, nothing retried. A refused login answers the form again; a blocked account the page {@code /blokada} or
+ * "Przekroczono maksymalną liczbę logowań". What fails is an {@link ElicznikException} naming the step - never an answer
+ * of the portal, the account or the password.
+ */
 @Component
 public class ElicznikClient {
 
@@ -44,7 +52,9 @@ public class ElicznikClient {
     //a page of the portal is about 100 kB
     static final int MAX_ANSWER_BYTES = 4 * 1024 * 1024;
     static final String USER_AGENT = "smart-home-automation-system energy-service (one login a day)";
-    private static final Pattern FORM = Pattern.compile("<form[^>]+id=\"kc-form-login\"[^>]+action=\"([^\"]+)\"");
+    //the tags of the forms of a page, then the action of the login form - two linear patterns, no backtracking
+    private static final Pattern FORM_TAG = Pattern.compile("<form\\b[^>]*+>");
+    private static final Pattern ACTION = Pattern.compile("\\baction=\"([^\"]*+)\"");
     private static final String FORM_ID = "id=\"kc-form-login\"";
     private static final String BLOCKED_PAGE = "/blokada";
     private static final String TOO_MANY_LOGINS = "Przekroczono maksymaln";
@@ -163,10 +173,14 @@ public class ElicznikClient {
     }
 
     private static Optional<URI> formAction(final Page page) {
-        final Matcher matcher = FORM.matcher(page.body());
-        return matcher.find()
-            ? Optional.of(page.uri().resolve(matcher.group(1).replace("&amp;", "&")))
-            : Optional.empty();
+        final Matcher tags = FORM_TAG.matcher(page.body());
+        return tags.results()
+            .map(MatchResult::group)
+            .filter(tag -> tag.contains(FORM_ID))
+            .map(ACTION::matcher)
+            .filter(Matcher::find)
+            .map(action -> page.uri().resolve(action.group(1).replace("&amp;", "&")))
+            .findFirst();
     }
 
     //a blocked account or a refused login - the login form again, wherever it is answered

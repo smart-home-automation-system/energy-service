@@ -96,7 +96,11 @@ class EnergyServiceApplicationTest {
         assertThat(required(20)).containsExactly("energy.forecast.sofar.tilt", "pv-sofar-tilt");
         assertThat(required(21)).containsExactly("energy.forecast.sofar.azimuth", "pv-sofar-azimuth");
         assertThat(required(22)).containsExactly("energy.forecast.sofar.peak-kwp", "pv-sofar-peak-kwp");
-        //HAS-340: the account of the eLicznik portal (the secret energy) and the point of the meter (the manifest)
+    }
+
+    //HAS-340: the account of the eLicznik portal (the secret energy) and the point of the meter (the manifest)
+    @Test
+    void should_require_the_account_of_the_elicznik_portal() {
         assertThat(required(23)).containsExactly("energy.elicznik.username", "elicznik-login");
         assertThat(required(24)).containsExactly("energy.elicznik.password", "elicznik-password");
         assertThat(required(25)).containsExactly("energy.elicznik.meter-id", "elicznik-meter-id");

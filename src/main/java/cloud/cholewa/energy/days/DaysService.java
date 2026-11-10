@@ -13,6 +13,7 @@ import reactor.core.publisher.Mono;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.Month;
 import java.time.YearMonth;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -62,7 +63,7 @@ public class DaysService {
                 final YearMonth last = first.plusMonths(11);
                 return energyDayRepository.findByDayLessThanEqualOrderByDay(last.atEndOfMonth())
                     .collectList()
-                    .zipWhen(days -> elicznikRepository.findDays(LocalDate.of(MIN_YEAR, 1, 1), last.atEndOfMonth())
+                    .zipWhen(days -> elicznikRepository.findDays(LocalDate.of(MIN_YEAR, Month.JANUARY, 1), last.atEndOfMonth())
                         .collectList())
                     .map(both -> reply(asked, first, last, both.getT1(), both.getT2()));
             });

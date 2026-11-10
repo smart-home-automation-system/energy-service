@@ -7,6 +7,7 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -42,8 +43,7 @@ final class ElicznikDay {
             return Optional.empty();
         }
         return Optional.of(taken.keySet().stream()
-            .sorted((first, second) -> first.hour() != second.hour() ? Integer.compare(first.hour(), second.hour())
-                : Boolean.compare(second.repeated(), first.repeated()))
+            .sorted(Comparator.comparingInt(Key::hour).thenComparing(Key::repeated, Comparator.reverseOrder()))
             .map(key -> new ElicznikHourEntity(day, key.hour(), key.repeated(), taken.get(key), given.get(key), fetchedAt))
             .toList());
     }
