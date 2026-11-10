@@ -73,6 +73,14 @@ public class EnergyException extends RuntimeException {
             "No planned outage " + id + " is announced");
     }
 
+    public static EnergyException fetchTooSoon(final String message) {
+        return new EnergyException(HttpStatus.CONFLICT, EnergyError.FETCH_TOO_SOON, message);
+    }
+
+    public static EnergyException elicznikUnavailable(final String message) {
+        return new EnergyException(HttpStatus.BAD_GATEWAY, EnergyError.ELICZNIK_UNAVAILABLE, message);
+    }
+
     public static EnergyException registryUnavailable() {
         return new EnergyException(HttpStatus.SERVICE_UNAVAILABLE, EnergyError.REGISTRY_UNAVAILABLE,
             "The inverters of the device registry are not known yet");

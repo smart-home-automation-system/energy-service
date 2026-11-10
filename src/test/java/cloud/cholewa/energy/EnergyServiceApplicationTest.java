@@ -96,7 +96,11 @@ class EnergyServiceApplicationTest {
         assertThat(required(20)).containsExactly("energy.forecast.sofar.tilt", "pv-sofar-tilt");
         assertThat(required(21)).containsExactly("energy.forecast.sofar.azimuth", "pv-sofar-azimuth");
         assertThat(required(22)).containsExactly("energy.forecast.sofar.peak-kwp", "pv-sofar-peak-kwp");
-        assertThat(applicationContext.getEnvironment().getProperty("cholewa.required-properties[23].property")).isNull();
+        //HAS-340: the account of the eLicznik portal (the secret energy) and the point of the meter (the manifest)
+        assertThat(required(23)).containsExactly("energy.elicznik.username", "elicznik-login");
+        assertThat(required(24)).containsExactly("energy.elicznik.password", "elicznik-password");
+        assertThat(required(25)).containsExactly("energy.elicznik.meter-id", "elicznik-meter-id");
+        assertThat(applicationContext.getEnvironment().getProperty("cholewa.required-properties[26].property")).isNull();
     }
 
     //HAS-336: the charge at 5 kW plus an hour, at most 23 h, the command given two minutes; the baseline of Self Use the

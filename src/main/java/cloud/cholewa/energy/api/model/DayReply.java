@@ -2,6 +2,7 @@ package cloud.cholewa.energy.api.model;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 
 //A closed day of GET /home/energy/days (HAS-331) - the contract of the dashboard. kWh; what was not established is left
@@ -14,6 +15,8 @@ import java.time.LocalDate;
 //the grid; both 0..1
 //cloudYield, cloudImported, cloudExported - the same day as the SolaX cloud counts it (the SOLAX and its own meter), the
 //cross-check; left out when the cloud was not read late that day
+//elicznikImport, elicznikExport - the same day as the meter of the operator counts it, from the eLicznik portal (HAS-340),
+//the settlement truth; left out until the portal served the day whole (the morning after it at the earliest)
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record DayReply(
     LocalDate day,
@@ -29,6 +32,8 @@ public record DayReply(
     Double gridShare,
     Double cloudYield,
     Double cloudImported,
-    Double cloudExported
+    Double cloudExported,
+    BigDecimal elicznikImport,
+    BigDecimal elicznikExport
 ) {
 }

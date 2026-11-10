@@ -23,6 +23,9 @@ import cloud.cholewa.energy.api.model.StatusReply;
 import cloud.cholewa.energy.config.ExceptionHandlerConfig;
 import cloud.cholewa.energy.error.EnergyException;
 import cloud.cholewa.energy.days.DaysService;
+import cloud.cholewa.energy.api.model.ElicznikReply;
+import cloud.cholewa.energy.elicznik.ElicznikService;
+import cloud.cholewa.energy.elicznik.ElicznikFetch;
 import cloud.cholewa.energy.flows.FlowsService;
 import cloud.cholewa.energy.history.HistoryService;
 import cloud.cholewa.energy.inverter.BatteryService;
@@ -95,6 +98,10 @@ class EnergyControllerTest {
     private AutomationService automationService;
     @MockitoBean
     private ForecastService forecastService;
+    @MockitoBean
+    private ElicznikService elicznikService;
+    @MockitoBean
+    private ElicznikFetch elicznikFetch;
 
     private static ChargeRunReply chargingRun() {
         return new ChargeRunReply(7L, "charging", "dashboard", LocalDateTime.of(2026, 11, 3, 14, 5, 30), 100,
@@ -569,7 +576,7 @@ class EnergyControllerTest {
     void should_answer_the_closed_days() {
         final LocalDate day = LocalDate.of(2026, 11, 1);
         when(daysService.days(day, day)).thenReturn(Mono.just(List.of(new DayReply(day, 4.0, 1.0, 5.0, 11.2, 0.0, 1.0,
-            0.2, 15.4, 1.0, 0.727, null, null, null))));
+            0.2, 15.4, 1.0, 0.727, null, null, null, null, null))));
 
         webTestClient.get().uri("/days?from=2026-11-01&to=2026-11-01")
             .exchange()
@@ -586,7 +593,7 @@ class EnergyControllerTest {
         when(daysService.months(2026)).thenReturn(Mono.just(new MonthsReply(2026, YearMonth.of(2026, 9),
             YearMonth.of(2027, 8), new BigDecimal("0.7"), List.of(new MonthsReply.Month(YearMonth.of(2026, 10), 0, null,
             null, null, null, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
-            new BigDecimal("55.00"))))));
+            new BigDecimal("55.00"), null, null, null, null)))));
 
         webTestClient.get().uri("/months?year=2026")
             .exchange()
@@ -595,6 +602,46 @@ class EnergyControllerTest {
                 {"year": 2026, "from": "2026-09", "to": "2027-08", "ratio": 0.7,
                  "months": [{"month": "2026-10", "days": 0, "credited": 0, "drawn": 0, "bought": 0, "expired": 0,
                              "stored": 55.00}]}""", JsonCompareMode.STRICT);
+    }
+
+    //HAS-340: the days of the operator - the repeated hour of the night the clocks go back, registers left out when unknown
+    @Test
+    void should_answer_the_days_of_the_elicznik_portal() {
+        final LocalDate day = LocalDate.of(2026, 10, 25);
+        when(elicznikService.days(day, day)).thenReturn(Mono.just(new ElicznikReply(day, day, List.of(
+            new ElicznikReply.Day(day, new BigDecimal("2.755"), BigDecimal.ZERO, null, null, List.of(
+                new ElicznikReply.Hour(3, true, new BigDecimal("1.392"), BigDecimal.ZERO),
+                new ElicznikReply.Hour(3, false, new BigDecimal("1.363"), BigDecimal.ZERO)))))));
+
+        webTestClient.get().uri("/elicznik?from=2026-10-25&to=2026-10-25")
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody().json("""
+                {"from": "2026-10-25", "to": "2026-10-25", "days": [{"day": "2026-10-25", "imported": 2.755, "exported": 0,
+                  "hours": [{"hour": 3, "repeated": true, "imported": 1.392, "exported": 0},
+                            {"hour": 3, "repeated": false, "imported": 1.363, "exported": 0}]}]}""",
+                JsonCompareMode.STRICT);
+    }
+
+    @Test
+    void should_fetch_the_elicznik_portal_by_hand() {
+        when(elicznikFetch.byHand()).thenReturn(Mono.just(new ElicznikFetch.Outcome(7, 7, 1)));
+
+        webTestClient.post().uri("/elicznik/fetch")
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody().json("""
+                {"days": 7, "registers": 7, "logins": 1}""", JsonCompareMode.STRICT);
+    }
+
+    @Test
+    void should_answer_a_fetch_too_soon_with_its_code() {
+        when(elicznikFetch.byHand()).thenReturn(Mono.error(EnergyException.fetchTooSoon("An eLicznik fetch runs")));
+
+        webTestClient.post().uri("/elicznik/fetch")
+            .exchange()
+            .expectStatus().isEqualTo(409)
+            .expectBody().jsonPath("$.errors[0].code").isEqualTo("FETCH_TOO_SOON");
     }
 
     //HAS-372, the contract of the dashboard (HAS-373): the categories in lower case, a value not known left out, stale

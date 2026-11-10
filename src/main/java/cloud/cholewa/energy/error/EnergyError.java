@@ -48,7 +48,13 @@ public enum EnergyError implements ErrorId {
     INVALID_AUTOMATION("Invalid automation"),
 
     //no planned outage still announced has this id (HAS-338)
-    NOT_FOUND_PLANNED_OUTAGE("Planned outage not found");
+    NOT_FOUND_PLANNED_OUTAGE("Planned outage not found"),
+
+    //the eLicznik portal asked by hand while a fetch runs or within energy.elicznik.fetch-every of the last login (HAS-340)
+    FETCH_TOO_SOON("Fetch too soon"),
+
+    //the eLicznik portal did not answer, refused the login or answered something else (HAS-340)
+    ELICZNIK_UNAVAILABLE("eLicznik unavailable");
 
     private final String description;
 }
