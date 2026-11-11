@@ -12,8 +12,8 @@ review - the owner had Claude implement the scaffold (HAS-325), the grid meter (
 SOLAX (HAS-328), the outages of the grid (HAS-334), the monitor of the sources (HAS-332), the SolaX cloud (HAS-329),
 the SOFAR (HAS-330), the balance, history and days (HAS-331), the production watch (HAS-333), the planned outages of
 Tauron (HAS-337), the charge of the battery (HAS-336) and its automation before an outage (HAS-338), the daily energy
-summary (HAS-339), the irradiance forecast (HAS-371) and its judgement and calibration (HAS-372), and reviews them in
-IntelliJ.
+summary (HAS-339), the irradiance forecast (HAS-371) and its judgement and calibration (HAS-372), the readings of the
+eLicznik portal (HAS-340), and reviews them in IntelliJ.
 
 ## Role in the system
 
@@ -26,7 +26,9 @@ IntelliJ.
   (`GET /home/device/registry?kind=inverter&enabled=true`, HAS-328). The SolaX Developer Platform (HAS-329,
   `openapi-eu.solaxcloud.com`). The Solarman Open API for the SOFAR (HAS-330, `globalapi.solarmanpv.com`). weather-service for the illuminance of the
   station (HAS-333, `GET /home/weather/current` by k8s DNS). The public API of Tauron Dystrybucja (HAS-337,
-  `www.tauron-dystrybucja.pl`, no login). The forecast API of Open-Meteo (HAS-371, `api.open-meteo.com`, no key).
+  `www.tauron-dystrybucja.pl`, no login). The forecast API of Open-Meteo (HAS-371, `api.open-meteo.com`, no key). The
+  eLicznik portal of Tauron Dystrybucja (HAS-340, `logowanie.tauron-dystrybucja.pl` and `elicznik.tauron-dystrybucja.pl`,
+  the login of the owner - no official API).
 - Writes: the Self Use work mode of the SOLAX through the SolaX cloud - a charge from the grid and the baseline after it
   (HAS-336), at most one command a minute.
 - Publishes: the alerts, reminders and infos of the outages of the grid to the exchange `notification` of
@@ -34,11 +36,11 @@ IntelliJ.
   the return marked for an SMS; the silence of the SOLAX dongle and the grid meter and the overload of a phase
   (HAS-332), Discord only; the alarms of the SOLAX from the SolaX cloud (HAS-329); the faults of the SOFAR (HAS-330); an inverter that does not produce in the sun (HAS-333); the planned outages of Tauron (HAS-337) - those of the
   street of the house and their reminders by SMS; the daily energy summary (HAS-339), an info at 21:30.
-- Uses libraries: `cholewa-commons` 1.13.0 (the pooled `ConnectionFactory`, the required
+- Uses libraries: `cholewa-commons` 1.14.0 since HAS-340 (the pooled `ConnectionFactory`, the required
   properties, the scheduler pool and `ScheduledPass`, the error contract, `NotificationConnection` and the
-  `...Sms` methods of `NotificationPublisher` - HAS-334), `smart-home-sdk` 1.15.0 (the kind
+  `...Sms` methods of `NotificationPublisher` - HAS-334), `smart-home-sdk` 1.19.0 since HAS-340 (the kind
   `inverter` and `InverterBinding`, HAS-326),
-  `shelly-client` 2.4.0 **with its beans on** (`ShellyRpcClient`, `ShellyGen1Client`,
+  `shelly-client` 2.7.0 since HAS-340 **with its beans on** (`ShellyRpcClient`, `ShellyGen1Client`,
   `ShellyMqttDecoder`; pinned by `EnergyServiceApplicationTest`) - 2.3.0 brought `EmStatus`, `EmDataStatus`
   and their RPC reads for HAS-327.
 - Database: own database `home-automation-energy`, pool 2 - with it 20 of the 47 connections of the
@@ -507,6 +509,49 @@ IntelliJ.
   - **Rehearsed** (2026-11-04): the released 0.15.0 image applied V1-V13 on a throwaway PostgreSQL with SSL, the new jar V14
     and fetched the real Open-Meteo: `GET /home/energy/forecast` answered seven days (44 kWh on the clear 5th at 0.8, 6 - 11
     on the cloudy days), 47 hours, the initial ratios, no category (no closed day in that database).
+- **The eLicznik portal of Tauron** (HAS-340, package `elicznik`) - what is easy to break, and what to do when it breaks:
+  - **There is no official API.** The requests are those of the Python `elicznik` scraper (mlesniew) and the Tauron AMIplus
+    integration of Home Assistant (PiotrMachowski), both fixed for the move of the login of Tauron to Keycloak in June
+    2026, and checked in the owner's browser on 2026-11-10: `GET logowanie.tauron-dystrybucja.pl/login?service=<portal>`
+    redirects to the CAS endpoint of the realm `ext` (`/realms/ext/protocol/cas/login`) whose page has
+    `form#kc-form-login` (`username`, `password`, `credentialId`; no CAPTCHA); its POST redirects back to the portal
+    with a ticket and the session cookie `PHPSESSID`; `POST /ustaw_punkt site[client]=<meter>` sets the point of the meter;
+    `POST /energia/api` (`from`, `to` as `dd.MM.yyyy`, `profile=full time`, `type=consum|oze`, `energy=1|2`) the hours,
+    `POST /odczyty/api` (`type=energia-pobrana|energia-oddana`) the registers. `ElicznikClient` follows the redirects
+    itself (`followRedirect(false)`) with a `CookieJar` of the pass - a WebClient keeps no cookies.
+  - **Read `allData`, never `values`** (`ElicznikAnswers`, pinned on the answers of 2026-11-10 in
+    `src/test/resources/elicznik/`, rebuilt without the meter id): `Hour` 1-24 is the hour ending at it; the night the
+    clocks go back has 25 rows, the first 02:00 - 03:00 with `Extra: "T"` (`values` sums the two into one); the night
+    they go forward 23 rows without hour 3 (`values` has a null there). `Date` is the same for every row - not read.
+    An hour not known yet has `EC`, `Status` and `Extra` null - never 0. The registers are whole kWh (`C`), one a day up
+    to yesterday, dated `dd.MM.yyyy 23:59:59`.
+  - **A day is stored only whole** (`ElicznikDay`): both lists answer every hour of the day on the clock of the house (23 /
+    24 / 25), each once and known; `elicznik_hour` (V15, key day + hour + repeated, `repeated` only for hour 3) is inserted
+    with `ON CONFLICT DO NOTHING` - a pass cut short leaves a day partly stored, which counts as missing and is completed
+    the next morning. Kept forever, never changed.
+  - **One login a day at most** (`ElicznikFetch`, cron `energy.elicznik.fetch-cron` 06:00, bounded at 5 min): the days of the
+    last `retry-days` (7) not stored whole and the registers not stored decide; nothing missing - no login at all. A day not
+    served whole is asked again the next morning; the morning it drops out of the window it is a WARN ("given up"). By hand
+    `POST /elicznik/fetch`, refused while one runs or within `fetch-every` (PT1H) of the last login (`FETCH_TOO_SOON`) - the
+    portal blocks an account after too many logins. Previous day at 22:10 was already whole (2026-11-10); a day is
+    compared with the 3EM (`energy_day`) when it is stored - more than `warn-above` (5 %) apart is a WARN, never an alert.
+  - **The failures** are named by step (`ElicznikException`): the form not found or the login not leading back to the
+    portal (the login of Tauron changed), the form answered again (the password expired or the account changed), `/blokada`
+    or "Przekroczono maksymalną liczbę logowań" (blocked - too many logins), an answer without `success` or not JSON
+    (the session expired or the API changed). Each a WARN; failed mornings for `alert-after` (3 days) one alert on
+    Discord, the next good fetch an info; the run in memory - a restart counts anew.
+  - **When it breaks** - what to check: the log line of the morning names the step. (1) Log in by hand in a browser at
+    https://elicznik.tauron-dystrybucja.pl - a password that expired is changed there and put into the secret `energy`
+    (`elicznik-password`), then the pod restarted. (2) A blocked account: wait (the portal lifts it), never retry in a loop.
+    (3) "form not found" / "did not lead back": read the current sources of the two projects above and compare the flow;
+    the samples of the tests are answers of the real portal - record new ones the same way (read only, the owner logged
+    in) when the answer changes. (4) A day missing for longer than `retry-days` is not fetched again by itself - raise
+    `retry-days` for a morning.
+  - **Never in a log** (`LogbookConfig`): the form fields `username` and `password`, the headers `Cookie`, `Set-Cookie` and
+    `Location` (the ticket), the codes of the login in the query, and **every HTML page naming the portal** (it shows the
+    owner and the address of the house) - replaced by its length. The JSON of the readings stays. `ElicznikProperties`
+    prints no account. The point of the meter is the manifest's (`elicznik-meter-id`), the account the secret's.
+  - YAML reads `1_2_3` as the number 123 (underscores are digit separators) - a meter id written in a YAML file is quoted.
 - **The map of type 33** (`Type33`, pinned by `Type33Test` on `src/test/resources/solax/*.json` - answers of
   2026-10-23 19:52, 2026-10-27 20:49, 2026-10-28 10:27 and 2026-10-29 19:09 with invented dongle and inverter serials;
   the last three compared with SolaxCloud (the last one with the Pro 3EM as well), Developer Platform `v2/device/realtime_data` and `v2/plant/realtime_data`, within one

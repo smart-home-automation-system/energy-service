@@ -14,7 +14,10 @@ import java.util.List;
 //  day); credited = exported x ratio; drawn - the credit the imports of the month used, oldest first; bought - the imports
 //  the credit did not cover; expired - the credit of a month twelve months back that lapsed; stored - the credit left at
 //  the end of the month, what may still be drawn back within its twelve months.
-//The settlement is the house's estimate by whole months, from the first day the service closed - not the invoice
+//The settlement is the house's estimate by whole months, from the first day the service closed - not the invoice.
+//elicznikImported, elicznikExported, elicznikCredited, elicznikBalance (HAS-340) - the same from the days the eLicznik
+//portal of Tauron served (the meter of the operator): the sums of the month, its credit and the credit left at its end,
+//settled from the first month the portal was read; left out for a month without such a day
 public record MonthsReply(
     int year,
     YearMonth from,
@@ -35,7 +38,11 @@ public record MonthsReply(
         BigDecimal drawn,
         BigDecimal bought,
         BigDecimal expired,
-        BigDecimal stored
+        BigDecimal stored,
+        BigDecimal elicznikImported,
+        BigDecimal elicznikExported,
+        BigDecimal elicznikCredited,
+        BigDecimal elicznikBalance
     ) {
     }
 }

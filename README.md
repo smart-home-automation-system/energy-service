@@ -75,6 +75,13 @@ planned outage of Tauron.
   ratio starts at 0.8 and is calibrated every hour on the closed days of the last 28 with a production and a whole day of
   forecast (`pv_forecast_day`, V14): what the inverter produced over what the forecast gave, clamped 0.3 - 1.0, from five
   days on (`pv_forecast_calibration`).
+- **the meter of the operator** (HAS-340): the eLicznik portal of Tauron Dystrybucja has no official API, so the service
+  logs in to its pages as the owner (the login of Tauron, Keycloak) - once every morning at 06:00 and only when a day of
+  the last seven is not stored: the hourly import and export of the meter (`elicznik_hour`, V15 - the 25 hours of the
+  night the clocks go back and the 23 of the night they go forward kept as the portal answers them) and its registers at
+  the end of a day (`elicznik_meter`); a day the portal does not serve whole yet is asked again the next morning. A day
+  apart from the 3EM by more than 5 % is a WARN; failed mornings for three days are an alert ("the portal changed or the
+  password expired"). `GET /home/energy/elicznik`, the operator's day in `/days` and its settlement in `/months`.
 
 **The outages of the grid** - only the inverter knows the grid: the Pro 3EM goes dark with an empty battery, and the
 cluster runs in the house.
@@ -242,6 +249,11 @@ inverter (the availability alert covers it), the SOLAX in EPS (the outage alert 
   `energy.tauron.base-url` (`https://www.tauron-dystrybucja.pl`), `interval` (PT1H, 15 min - 24 h), `ahead-days` (30,
   1 - 60), `alert-after` (PT24H, 1 h - 7 days), `reminder-at` (18:00), `remind-before` (PT2H, 30 min - 6 h).
 - **The daily summary** (HAS-339): `energy.summary.time` (21:30, a whole minute of the house time).
+- **The eLicznik portal** (HAS-340): `elicznik-login` and `elicznik-password` - the account of the owner (the secret
+  `energy`, mandatory, never logged); `elicznik-meter-id` - the point of the meter as the portal names it, three numbers
+  joined by `_` (the manifest, mandatory); `energy.elicznik.fetch-cron` (`0 0 6 * * *`), `retry-days` (7, 1 - 31),
+  `alert-after` (3d, 1 - 14 days, a bare number is days), `warn-above` (0.05, 0.01 - 0.5), `fetch-every` (PT1H,
+  10 min - 24 h), `login-url` and `service-url` (the login of Tauron Dystrybucja and the portal).
 - **The irradiance forecast** (HAS-371): the planes of the panels from the manifest - mandatory, no default, no secret:
   `pv-solax-tilt`, `pv-solax-azimuth`, `pv-solax-peak-kwp` and the same for `sofar` (tilt 0 - 90 degrees from the
   horizontal, azimuth -180 - 180 as Open-Meteo counts it, 0 south, -90 east; the peak power in kWp, above 0);
@@ -273,8 +285,10 @@ Under the base path `/home/energy`, routed by the gateway by path, every method.
 | `GET` | `/home/energy/battery/charge/runs?from=&to=` | the charges requested in `[from, to)` (house times, at most 366 days), the oldest first, as above; `400 INVALID_RANGE` |
 | `GET` | `/home/energy/flows` | the balance now (HAS-331): `production`, `solaxPv`, `sofarPv`, `gridPower`, `batteryPower`, `houseLoad` (W, the sign convention above); `today` - `production`, `imported`, `exported`, `charged`, `discharged`, `houseLoad` (kWh), `selfConsumption`, `gridShare` (0..1); `inputs` - `grid`, `solax`, `sofar`, `battery`, each with `measuredAt` and `stale`. What depends on an input not known is left out |
 | `GET` | `/home/energy/history?metric=&from=&to=` | one metric in `[from, to)` (house times, at most 31 days) in buckets: `metric`, `from`, `to`, `bucketSeconds` (300, 1800 or 7200 by the length), `points` - `at`, `avg`, `min`, `max` (a sum the average only). Metrics: `grid-power`, `grid-import-energy`, `grid-export-energy` (the counters, kWh - max - min of a bucket is its energy), `pv-solax`, `pv-sofar`, `battery-power`, `battery-soc`, `pv-power`, `house-load`. `400 UNKNOWN_METRIC` naming the metrics there are, `400 INVALID_RANGE`, `503 REGISTRY_UNAVAILABLE` for a metric of an inverter before the registry was read |
-| `GET` | `/home/energy/days?from=&to=` | the closed days of `[from, to]` (ISO dates, at most 366 days): `day`, `solaxYield`, `sofarYield`, `production`, `imported`, `exported`, `charged`, `discharged`, `houseLoad` (kWh), `selfConsumption`, `gridShare` (0..1), `cloudYield`, `cloudImported`, `cloudExported` (the SolaX cloud); a value not established left out. `400 INVALID_RANGE` |
-| `GET` | `/home/energy/months?year=` | the billing year from `period-start` of `year` (2026: September 2026 - August 2027): `year`, `from`, `to` (`yyyy-MM`), `ratio`, `months` - `month`, `days` (closed), `production`, `imported`, `exported`, `houseLoad` (left out without a day), `credited`, `drawn`, `bought`, `expired`, `stored` (kWh) |
+| `GET` | `/home/energy/days?from=&to=` | the closed days of `[from, to]` (ISO dates, at most 366 days): `day`, `solaxYield`, `sofarYield`, `production`, `imported`, `exported`, `charged`, `discharged`, `houseLoad` (kWh), `selfConsumption`, `gridShare` (0..1), `cloudYield`, `cloudImported`, `cloudExported` (the SolaX cloud); a value not established left out. `400 INVALID_RANGE`; since 0.17.0 `elicznikImport`, `elicznikExport` - the same day as the meter of the operator counts it (the eLicznik portal, HAS-340), left out until the portal served the day whole |
+| `GET` | `/home/energy/months?year=` | the billing year from `period-start` of `year` (2026: September 2026 - August 2027): `year`, `from`, `to` (`yyyy-MM`), `ratio`, `months` - `month`, `days` (closed), `production`, `imported`, `exported`, `houseLoad` (left out without a day), `credited`, `drawn`, `bought`, `expired`, `stored` (kWh); since 0.17.0 `elicznikImported`, `elicznikExported`, `elicznikCredited`, `elicznikBalance` - the same from the days of the eLicznik portal (the credit left at the end of the month), settled from its first month, left out for a month without such a day |
+| `GET` | `/home/energy/elicznik?from=&to=` | the days the eLicznik portal of Tauron served whole (HAS-340, ISO dates, at most 31 days; `400 INVALID_RANGE`): `from`, `to`, `days` - `day`, `imported`, `exported` (kWh, the sums of its hours), `meterImported`, `meterExported` (the registers of the meter at its end, whole kWh, left out when not stored), `hours` - `hour` 1-24 (the hour ending at it), `repeated` (the first 02:00 - 03:00 of the night the clocks go back: 25 hours that day, 23 the night they go forward), `imported`, `exported` |
+| `POST` | `/home/energy/elicznik/fetch` | the fetch of the morning by hand (HAS-340): one login to the portal for every day and register missing of the last `retry-days`, none when nothing is missing - `days`, `registers` (stored), `logins` (0 or 1); `409 FETCH_TOO_SOON` while a fetch runs or within `fetch-every` of the last login, `502 ELICZNIK_UNAVAILABLE` when the portal failed (the step named) |
 | `GET` | `/home/energy/forecast` | the solar of the coming days (HAS-372, house times): `fetchedAt` (the older fetch of both planes), `stale` (always written: no fetch, or older than `stale-after`), `houseLoadKwh` / `houseLoadDays` (the mean house load of the last closed days), `performanceRatio` - `solax`, `sofar`: `ratio`, `calibratedOnDays` (0: the initial ratio); `days` - seven from today: `day`, `solaxKwh`, `sofarKwh`, `totalKwh`, `coverage` (of the house load), `category` (`none`, `poor`, `fair`, `good`), `cloudCover` (% while the sun is up), `sunshineHours` (above 120 W/m2 on the ground); `past` - the last two calibrated days: `day`, `solax` / `sofar` - `forecastKwh` (at the ratio in use), `actualKwh`; `hourly` - the next 48 hours from the hour now: `hour`, `solaxKw`, `sofarKw`, `cloudCover`; `outlook` - `sunBackOn` (the first fair or good day), `daysWithoutSun`. A value not known is left out |
 
 # Database

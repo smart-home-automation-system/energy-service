@@ -21,6 +21,9 @@ import cloud.cholewa.energy.api.model.StatusReply;
 import cloud.cholewa.energy.automation.AutomationService;
 import cloud.cholewa.energy.charge.ChargeService;
 import cloud.cholewa.energy.days.DaysService;
+import cloud.cholewa.energy.elicznik.ElicznikFetch;
+import cloud.cholewa.energy.elicznik.ElicznikService;
+import cloud.cholewa.energy.api.model.ElicznikReply;
 import cloud.cholewa.energy.flows.FlowsService;
 import cloud.cholewa.energy.forecast.ForecastService;
 import cloud.cholewa.energy.history.HistoryService;
@@ -67,6 +70,8 @@ public class EnergyController {
     private final ChargeService chargeService;
     private final AutomationService automationService;
     private final ForecastService forecastService;
+    private final ElicznikService elicznikService;
+    private final ElicznikFetch elicznikFetch;
 
     //every source of energy with whether it answers - the contract of the availability card of the dashboard - and
     //the grid as the SOLAX sees it (HAS-334)
@@ -203,6 +208,21 @@ public class EnergyController {
     @GetMapping("months")
     Mono<MonthsReply> months(@RequestParam final int year) {
         return daysService.months(year);
+    }
+
+    //the days the eLicznik portal of Tauron served whole in [from, to], both included, at most 31 days - hourly (HAS-340)
+    @GetMapping("elicznik")
+    Mono<ElicznikReply> elicznik(
+        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) final LocalDate from,
+        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) final LocalDate to
+    ) {
+        return elicznikService.days(from, to);
+    }
+
+    //the fetch of the morning by hand (HAS-340): one login, refused within energy.elicznik.fetch-every of the last one
+    @PostMapping("elicznik/fetch")
+    Mono<ElicznikFetch.Outcome> fetchElicznik() {
+        return elicznikFetch.byHand();
     }
 
     //the solar of the coming days: kWh per inverter and day against the house load of the last week, calibrated on the

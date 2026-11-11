@@ -170,6 +170,22 @@ energy:
     alert-after: PT24H
     reminder-at: "18:00"
     remind-before: PT2H
+  # the readings of the meter of the operator from the eLicznik portal of Tauron Dystrybucja (HAS-340): no official API, the
+  # login of its pages. The account from the secret energy, the point of the meter from the manifest - no default. Asked
+  # every morning at fetch-cron for the days of the last retry-days not stored whole (no login when nothing is missing);
+  # failed mornings for alert-after (days) an alert; a day apart from the 3EM by more than warn-above a WARN; by hand
+  # (POST /elicznik/fetch) at most once every fetch-every
+  elicznik:
+    login-url: https://logowanie.tauron-dystrybucja.pl/login
+    service-url: https://elicznik.tauron-dystrybucja.pl
+    username: ${elicznik-login}
+    password: ${elicznik-password}
+    meter-id: ${elicznik-meter-id}
+    fetch-cron: "0 0 6 * * *"
+    retry-days: 7
+    alert-after: 3d
+    warn-above: 0.05
+    fetch-every: PT1H
   # the daily energy summary (HAS-339): an info at this house time, a whole minute
   summary:
     time: "21:30"
@@ -267,6 +283,12 @@ cholewa:
       variable: pv-sofar-azimuth
     - property: energy.forecast.sofar.peak-kwp
       variable: pv-sofar-peak-kwp
+    - property: energy.elicznik.username
+      variable: elicznik-login
+    - property: energy.elicznik.password
+      variable: elicznik-password
+    - property: energy.elicznik.meter-id
+      variable: elicznik-meter-id
 
 server:
   port: 6200
@@ -393,6 +415,13 @@ energy:
     city: Testowo
     street: Przykładowa
     house-no: "1"
+  # the eLicznik portal at an address nothing listens on, an account and a meter that are not the ones of the house
+  elicznik:
+    login-url: http://localhost:1/login
+    service-url: http://localhost:1
+    username: test@example.com
+    password: test
+    meter-id: "1_2_3"
   # Open-Meteo at an address nothing listens on, planes that are not the ones of the house
   forecast:
     base-url: http://localhost:1

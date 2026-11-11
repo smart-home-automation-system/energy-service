@@ -2,6 +2,7 @@ package cloud.cholewa.energy.config;
 
 import org.junit.jupiter.api.Test;
 import org.zalando.logbook.BodyFilter;
+import org.zalando.logbook.HttpHeaders;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -72,5 +73,49 @@ class LogbookConfigTest {
         assertThat(filter.filter("application/json", """
             {"code":10000,"result":{"dailyYield":2.5,"plantLocalTime":"2026-11-01 12:55:27"}}"""))
             .contains("\"dailyYield\":2.5").contains("2026-11-01 12:55:27");
+    }
+
+    //HAS-340: the login form of the eLicznik portal - the account and its password
+    @Test
+    void should_mask_the_account_of_the_elicznik_login() {
+        assertThat(filter.filter("application/x-www-form-urlencoded",
+            "username=owner%40example.com&password=s3cr3t&credentialId="))
+            .doesNotContain("owner").doesNotContain("s3cr3t").contains("credentialId=");
+    }
+
+    //a page of the portal names the owner and the address of the house: left out whole
+    @Test
+    void should_leave_out_a_page_of_the_portal() {
+        final String page = "<html><a href=\"https://elicznik.tauron-dystrybucja.pl/\">Jan Kowalski, ul. Przykładowa 1</a></html>";
+
+        assertThat(filter.filter("text/html; charset=UTF-8", page))
+            .isEqualTo("[a page of the eLicznik portal, " + page.length() + " characters, left out]");
+    }
+
+    //the answer of the SOLAX dongle is text/html too - it names no portal and stays
+    @Test
+    void should_keep_the_answer_of_the_dongle() {
+        assertThat(filter.filter("text/html", "{\"sn\":\"SXXXXXXXXX\",\"Data\":[2301]}")).contains("2301");
+    }
+
+    @Test
+    void should_mask_the_session_cookies_and_the_redirects() {
+        final HttpHeaders filtered = new LogbookConfig().sessionHeaderFilter().filter(HttpHeaders.empty()
+            .update("Set-Cookie", "PHPSESSID=p1; path=/")
+            .update("Cookie", "AUTH_SESSION_ID=kc1")
+            .update("Location", "https://elicznik.tauron-dystrybucja.pl/?ticket=ST-1")
+            .update("Content-Type", "text/html"));
+
+        assertThat(filtered.get("Set-Cookie")).containsExactly("XXX");
+        assertThat(filtered.get("Cookie")).containsExactly("XXX");
+        assertThat(filtered.get("Location")).containsExactly("XXX");
+        assertThat(filtered.get("Content-Type")).containsExactly("text/html");
+    }
+
+    @Test
+    void should_mask_the_codes_of_the_login_in_the_query() {
+        assertThat(new LogbookConfig().solarmanQueryFilter()
+            .filter("session_code=sc1&execution=ex1&client_id=cas&tab_id=t1&ticket=ST-1"))
+            .isEqualTo("session_code=XXX&execution=XXX&client_id=cas&tab_id=XXX&ticket=XXX");
     }
 }

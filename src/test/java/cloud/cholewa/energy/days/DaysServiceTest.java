@@ -2,10 +2,12 @@ package cloud.cholewa.energy.days;
 
 import cloud.cholewa.energy.api.model.DayReply;
 import cloud.cholewa.energy.api.model.MonthsReply;
+import cloud.cholewa.energy.database.ElicznikRepository;
 import cloud.cholewa.energy.database.EnergyDayEntity;
 import cloud.cholewa.energy.database.EnergyDayRepository;
 import cloud.cholewa.energy.error.EnergyError;
 import cloud.cholewa.energy.error.EnergyException;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Flux;
 import reactor.test.StepVerifier;
@@ -27,7 +29,14 @@ import static org.mockito.Mockito.when;
 class DaysServiceTest {
 
     private final EnergyDayRepository repository = mock(EnergyDayRepository.class);
-    private final DaysService service = new DaysService(repository, new SettlementProperties(new BigDecimal("0.7"), 9));
+    private final ElicznikRepository elicznik = mock(ElicznikRepository.class);
+    private final DaysService service = new DaysService(repository, elicznik,
+        new SettlementProperties(new BigDecimal("0.7"), 9));
+
+    @BeforeEach
+    void noOperatorDays() {
+        when(elicznik.findDays(any(), any())).thenReturn(Flux.empty());
+    }
 
     private static EnergyDayEntity day(final LocalDate day, final Double imported, final Double exported) {
         return new EnergyDayEntity(day, 4.0, 1.0, 5.0, imported, exported, 1.0, 0.2, 15.4, 1.0, 0.727, null, null, null,
@@ -41,7 +50,45 @@ class DaysServiceTest {
 
         service.days(day, day).as(StepVerifier::create)
             .expectNext(List.of(new DayReply(day, 4.0, 1.0, 5.0, 11.2, 0.0, 1.0, 0.2, 15.4, 1.0, 0.727, null, null,
-                null)))
+                null, null, null)))
+            .verifyComplete();
+    }
+
+    //HAS-340: the same day as the meter of the operator counts it, beside the 3EM
+    @Test
+    void should_answer_the_day_of_the_operator_beside_the_3em() {
+        final LocalDate day = LocalDate.of(2026, 11, 8);
+        when(repository.findByDayBetweenOrderByDay(day, day)).thenReturn(Flux.just(day(day, 17.2, 0.6)));
+        when(elicznik.findDays(day, day)).thenReturn(Flux.just(new ElicznikRepository.DayEnergy(day,
+            new BigDecimal("17.223"), new BigDecimal("0.598"))));
+
+        service.days(day, day).as(StepVerifier::create)
+            .assertNext(days -> {
+                assertThat(days.getFirst().elicznikImport()).isEqualByComparingTo("17.223");
+                assertThat(days.getFirst().elicznikExport()).isEqualByComparingTo("0.598");
+            })
+            .verifyComplete();
+    }
+
+    //HAS-340: the settlement of the operator from its first month, left out of the months without a day of the portal
+    @Test
+    void should_settle_the_months_of_the_operator() {
+        when(repository.findByDayLessThanEqualOrderByDay(any())).thenReturn(Flux.empty());
+        when(elicznik.findDays(any(), any())).thenReturn(Flux.just(
+            new ElicznikRepository.DayEnergy(LocalDate.of(2026, 10, 1), new BigDecimal("10"), new BigDecimal("100")),
+            new ElicznikRepository.DayEnergy(LocalDate.of(2026, 11, 1), new BigDecimal("20"), BigDecimal.ZERO)));
+
+        service.months(2026).as(StepVerifier::create)
+            .assertNext(reply -> {
+                assertThat(reply.months().getFirst().elicznikCredited()).isNull();
+                final MonthsReply.Month october = reply.months().get(1);
+                assertThat(october.elicznikImported()).isEqualByComparingTo("10");
+                assertThat(october.elicznikExported()).isEqualByComparingTo("100");
+                assertThat(october.elicznikCredited()).isEqualByComparingTo("70");
+                assertThat(october.elicznikBalance()).isEqualByComparingTo("60");
+                assertThat(reply.months().get(2).elicznikBalance()).isEqualByComparingTo("40");
+                assertThat(reply.months().get(3).elicznikBalance()).isNull();
+            })
             .verifyComplete();
     }
 
