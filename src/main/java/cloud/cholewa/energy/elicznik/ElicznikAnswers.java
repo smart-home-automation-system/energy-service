@@ -34,7 +34,7 @@ final class ElicznikAnswers {
 
     //the hours of POST /energia/api, in the order of the answer
     static List<Hour> hours(final JsonMapper jsonMapper, final String body) {
-        final JsonNode rows = data(jsonMapper, body).path("allData");
+        final JsonNode rows = data(json(jsonMapper, body)).path("allData");
         if (!rows.isArray()) {
             throw new ElicznikException("The eLicznik portal answered the energy without its hours");
         }
@@ -54,9 +54,15 @@ final class ElicznikAnswers {
         return hours;
     }
 
-    //the registers of POST /odczyty/api, one a day
+    //the registers of POST /odczyty/api, one a day. A register the portal has not read yet is answered without success and
+    //with an empty list (HAS-422: the day before at 06:00 on 2026-11-12, served by 09:48) - none yet, never a failure;
+    //anything else without success still is
     static List<Register> registers(final JsonMapper jsonMapper, final String body) {
-        final JsonNode rows = data(jsonMapper, body);
+        final JsonNode answer = json(jsonMapper, body);
+        if (isNotReadYet(answer)) {
+            return List.of();
+        }
+        final JsonNode rows = data(answer);
         if (!rows.isArray()) {
             throw new ElicznikException("The eLicznik portal answered the readings without a list");
         }
@@ -71,13 +77,21 @@ final class ElicznikAnswers {
         return registers;
     }
 
-    private static JsonNode data(final JsonMapper jsonMapper, final String body) {
-        final JsonNode answer;
+    private static JsonNode json(final JsonMapper jsonMapper, final String body) {
         try {
-            answer = jsonMapper.readTree(body);
+            return jsonMapper.readTree(body);
         } catch (final RuntimeException notJson) {
             throw new ElicznikException("The eLicznik portal answered something that is not JSON");
         }
+    }
+
+    //{"success":false,"data":[]}
+    private static boolean isNotReadYet(final JsonNode answer) {
+        final JsonNode data = answer.path("data");
+        return !answer.path("success").asBoolean(false) && data.isArray() && data.isEmpty();
+    }
+
+    private static JsonNode data(final JsonNode answer) {
         if (!answer.path("success").asBoolean(false)) {
             throw new ElicznikException("The eLicznik portal answered without success");
         }

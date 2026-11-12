@@ -36,6 +36,13 @@ class ElicznikPropertiesTest {
         });
     }
 
+    //HAS-422: 10:00, not 06:00 - at 06:00 the portal had not served the day before
+    @Test
+    void should_fetch_at_ten_in_the_morning() {
+        contextRunner.run(context -> assertThat(context.getEnvironment().getProperty("energy.elicznik.fetch-cron"))
+            .isEqualTo("0 0 10 * * *"));
+    }
+
     //a bare number of alert-after is days - as milliseconds it would alert at the first failure
     @Test
     void should_read_a_bare_alert_after_as_days() {
