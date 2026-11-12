@@ -85,7 +85,7 @@ final class ElicznikAnswers {
         }
     }
 
-    //{"success":false,"data":[]}
+    //an answer without success whose data is an empty list
     private static boolean isNotReadYet(final JsonNode answer) {
         final JsonNode data = answer.path("data");
         return !answer.path("success").asBoolean(false) && data.isArray() && data.isEmpty();
