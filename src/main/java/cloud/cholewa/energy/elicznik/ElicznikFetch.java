@@ -31,7 +31,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-//The readings of the eLicznik portal (HAS-340): every morning at energy.elicznik.fetch-cron (06:00) the days of the last
+//The readings of the eLicznik portal (HAS-340): every morning at energy.elicznik.fetch-cron (10:00 - HAS-422: at 06:00 the
+//portal had not served the day before) the days of the last
 //retry-days not stored whole and the registers not stored are asked for, with ONE login - and no login at all when nothing
 //is missing, so the portal is asked at most once a day. A day the portal does not serve whole yet is asked again the next
 //morning, for retry-days; then it is given up with a WARN. A day stored is compared with the 3EM (energy_day): a share
@@ -197,7 +198,14 @@ public class ElicznikFetch {
             })
             .concatMap(repository::save)
             .reduce(0, (count, saved) -> count + saved.intValue())
-            .defaultIfEmpty(0);
+            .defaultIfEmpty(0)
+            //a register not read yet is no failure (HAS-422), but it is said - one that never comes would leave no line
+            .doOnNext(stored -> {
+                if (!missing.isEmpty() && stored < missing.size()) {
+                    log.info("The eLicznik registers of {} day(s) from {} to {} are not served yet - {} stored, asked again the next morning",
+                        missing.size(), missing.first(), missing.last(), stored);
+                }
+            });
     }
 
     //the day of the portal against the 3EM of the same day, when that day was closed and knows it

@@ -70,6 +70,24 @@ class ElicznikAnswersTest {
             .isEqualByComparingTo("4873");
     }
 
+    //HAS-422: the register of the day before at 06:00 on 2026-11-12 - not read yet, none, never a failure
+    @Test
+    void should_take_a_register_not_read_yet_as_none() {
+        assertThat(ElicznikAnswers.registers(jsonMapper, "{\"success\":false,\"data\":[]}")).isEmpty();
+    }
+
+    //anything else without success is still a failure: a body, an error text, no data at all
+    @Test
+    void should_refuse_a_register_without_success_that_says_more() {
+        assertThatThrownBy(() -> ElicznikAnswers.registers(jsonMapper,
+            "{\"success\":false,\"data\":[{\"Date\":\"11.11.2026 00:00:00\",\"C\":2858}]}"))
+            .isInstanceOf(ElicznikException.class)
+            .hasMessage("The eLicznik portal answered without success");
+        assertThatThrownBy(() -> ElicznikAnswers.registers(jsonMapper, "{\"success\":false,\"message\":\"error\"}"))
+            .isInstanceOf(ElicznikException.class)
+            .hasMessage("The eLicznik portal answered without success");
+    }
+
     @Test
     void should_refuse_an_answer_without_success() {
         assertThatThrownBy(() -> ElicznikAnswers.hours(jsonMapper, "{\"success\":false}"))

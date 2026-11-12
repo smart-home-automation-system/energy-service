@@ -529,7 +529,8 @@ eLicznik portal (HAS-340), and reviews them in IntelliJ.
     24 / 25), each once and known; `elicznik_hour` (V15, key day + hour + repeated, `repeated` only for hour 3) is inserted
     with `ON CONFLICT DO NOTHING` - a pass cut short leaves a day partly stored, which counts as missing and is completed
     the next morning. Kept forever, never changed.
-  - **One login a day at most** (`ElicznikFetch`, cron `energy.elicznik.fetch-cron` 06:00, bounded at 5 min): the days of the
+  - **One login a day at most** (`ElicznikFetch`, cron `energy.elicznik.fetch-cron` **10:00**, bounded at 5 min - 06:00 until HAS-422: on 2026-11-12 the portal had served
+    hours 1-5 of the day before at 06:00 and all of it by 09:48): the days of the
     last `retry-days` (7) not stored whole and the registers not stored decide; nothing missing - no login at all. A day not
     served whole is asked again the next morning; the morning it drops out of the window it is a WARN ("given up"). By hand
     `POST /elicznik/fetch`, refused while one runs or within `fetch-every` (PT1H) of the last login (`FETCH_TOO_SOON`) - the
@@ -538,7 +539,8 @@ eLicznik portal (HAS-340), and reviews them in IntelliJ.
   - **The failures** are named by step (`ElicznikException`): the form not found or the login not leading back to the
     portal (the login of Tauron changed), the form answered again (the password expired or the account changed), `/blokada`
     or "Przekroczono maksymalną liczbę logowań" (blocked - too many logins), an answer without `success` or not JSON
-    (the session expired or the API changed). Each a WARN; failed mornings for `alert-after` (3 days) one alert on
+    (the session expired or the API changed) - **except a register not read yet**, answered `{"success":false,"data":[]}`
+    (HAS-422): no register yet, asked again the next morning, never a failed morning. Each a WARN; failed mornings for `alert-after` (3 days) one alert on
     Discord, the next good fetch an info; the run in memory - a restart counts anew.
   - **When it breaks** - what to check: the log line of the morning names the step. (1) Log in by hand in a browser at
     https://elicznik.tauron-dystrybucja.pl - a password that expired is changed there and put into the secret `energy`

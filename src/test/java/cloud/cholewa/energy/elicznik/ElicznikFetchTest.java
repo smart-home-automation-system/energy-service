@@ -175,6 +175,26 @@ class ElicznikFetchTest {
         assertThat(ElicznikFetch.share(BigDecimal.ZERO, BigDecimal.ZERO)).isEmpty();
     }
 
+    //HAS-422, the morning of 2026-11-12 every day: the day before not whole, its register not read yet - nothing stored and
+    //asked again, never a failed morning, so no alert however long it lasts
+    @Test
+    void should_never_count_a_register_not_read_yet_toward_the_alert() {
+        stored(List.of(YESTERDAY));
+        when(repository.meterDays(any(), any())).thenReturn(Flux.empty());
+        when(client.login()).thenReturn(Mono.just(session));
+        when(client.hours(eq(session), any(), anyBoolean())).thenReturn(Mono.just(hours(CONSUM_2026_11_10)));
+        when(client.registers(eq(session), any(), any(), anyBoolean()))
+            .thenReturn(Mono.fromCallable(() -> ElicznikAnswers.registers(jsonMapper, "{\"success\":false,\"data\":[]}")));
+
+        for (int morning = 0; morning < 5; morning++) {
+            now.set(MORNING.plus(Duration.ofDays(morning)));
+            sut.morning().as(StepVerifier::create).verifyComplete();
+        }
+
+        verify(repository, never()).save(any(ElicznikMeterEntity.class));
+        verify(publisher, never()).publishAlert(anyString());
+    }
+
     //the run of failed mornings: a WARN each, the alert at alert-after (3 days), never twice, the info at the return
     @Test
     void should_alert_after_three_days_of_failures_and_tell_the_return() {

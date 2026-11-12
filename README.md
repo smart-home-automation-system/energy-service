@@ -76,10 +76,11 @@ planned outage of Tauron.
   forecast (`pv_forecast_day`, V14): what the inverter produced over what the forecast gave, clamped 0.3 - 1.0, from five
   days on (`pv_forecast_calibration`).
 - **the meter of the operator** (HAS-340): the eLicznik portal of Tauron Dystrybucja has no official API, so the service
-  logs in to its pages as the owner (the login of Tauron, Keycloak) - once every morning at 06:00 and only when a day of
+  logs in to its pages as the owner (the login of Tauron, Keycloak) - once every morning at 10:00 (06:00 until HAS-422 - the portal had not served the day before by then) and only when a day of
   the last seven is not stored: the hourly import and export of the meter (`elicznik_hour`, V15 - the 25 hours of the
   night the clocks go back and the 23 of the night they go forward kept as the portal answers them) and its registers at
-  the end of a day (`elicznik_meter`); a day the portal does not serve whole yet is asked again the next morning. A day
+  the end of a day (`elicznik_meter`); a day the portal does not serve whole yet, or a register it has not read yet
+  (answered without success and with an empty list), is asked again the next morning - never a failure. A day
   apart from the 3EM by more than 5 % is a WARN; failed mornings for three days are an alert ("the portal changed or the
   password expired"). `GET /home/energy/elicznik`, the operator's day in `/days` and its settlement in `/months`.
 

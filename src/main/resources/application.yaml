@@ -181,7 +181,8 @@ energy:
     username: ${elicznik-login}
     password: ${elicznik-password}
     meter-id: ${elicznik-meter-id}
-    fetch-cron: "0 0 6 * * *"
+    # 10:00, not 06:00 (HAS-422): at 06:00 the portal had served 5 hours of the day before and not its register
+    fetch-cron: "0 0 10 * * *"
     retry-days: 7
     alert-after: 3d
     warn-above: 0.05
