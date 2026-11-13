@@ -47,6 +47,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webflux.test.autoconfigure.WebFluxTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.json.JsonCompareMode;
 import org.springframework.test.web.reactive.server.WebTestClient;
@@ -145,13 +146,13 @@ class EnergyControllerTest {
         when(chargeService.start(new ChargeRequest(null, null), "dashboard")).thenReturn(Mono.just(chargingRun()));
 
         webTestClient.post().uri("/battery/charge?source=automation")
-            .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+            .contentType(MediaType.APPLICATION_JSON)
             .bodyValue("{\"targetSoc\": 80, \"until\": \"2026-11-03T16:00:00\"}")
             .exchange()
             .expectStatus().isAccepted()
             .expectBody().jsonPath("$.state").isEqualTo("charging");
         webTestClient.post().uri("/battery/charge")
-            .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+            .contentType(MediaType.APPLICATION_JSON)
             .bodyValue("{}")
             .exchange()
             .expectStatus().isAccepted();
@@ -163,7 +164,7 @@ class EnergyControllerTest {
             .thenReturn(Mono.error(EnergyException.chargeInProgress()));
 
         webTestClient.post().uri("/battery/charge")
-            .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+            .contentType(MediaType.APPLICATION_JSON)
             .bodyValue("{}")
             .exchange()
             .expectStatus().isEqualTo(409)
@@ -234,7 +235,7 @@ class EnergyControllerTest {
             .thenReturn(Mono.just(new AutomationReply(true, 90, 4.5, 30, LocalDateTime.of(2026, 11, 3, 15, 0))));
 
         webTestClient.put().uri("/automation")
-            .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+            .contentType(MediaType.APPLICATION_JSON)
             .bodyValue("{\"chargeBeforeOutage\": true, \"targetSoc\": 90, \"chargePowerKw\": 4.5, \"marginMinutes\": 30}")
             .exchange()
             .expectStatus().isOk()

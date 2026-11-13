@@ -19,6 +19,7 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -64,7 +65,7 @@ class SolaxAlarmWatchTest {
         watch.check().as(StepVerifier::create).verifyComplete();
 
         verify(publisher).publishAlert("SOLAX alarm: Grid Volt Fault (error 1, type 1, level 1) since 20:30.");
-        verify(repository, org.mockito.Mockito.times(1)).save(any());
+        verify(repository, times(1)).save(any());
     }
 
     @Test

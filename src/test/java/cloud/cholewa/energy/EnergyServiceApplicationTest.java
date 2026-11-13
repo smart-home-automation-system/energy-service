@@ -6,6 +6,7 @@ import cloud.cholewa.energy.meter.MeterProperties;
 import cloud.cholewa.energy.monitor.AvailabilityProperties;
 import cloud.cholewa.energy.monitor.OverloadProperties;
 import cloud.cholewa.energy.solax.SolaxProperties;
+import cloud.cholewa.energy.solaxcloud.SolaxCloudProperties;
 import cloud.cholewa.energy.tauron.TauronProperties;
 import cloud.cholewa.shelly.http.ShellyGen1Client;
 import cloud.cholewa.shelly.http.ShellyRpcClient;
@@ -138,7 +139,7 @@ class EnergyServiceApplicationTest {
     //owner, 2026-11-01: Bat Power Low (17) is never told - the battery at its floor, almost every day
     @Test
     void should_leave_out_the_alarm_of_a_battery_at_its_floor() {
-        assertThat(applicationContext.getBean(cloud.cholewa.energy.solaxcloud.SolaxCloudProperties.class)
+        assertThat(applicationContext.getBean(SolaxCloudProperties.class)
             .ignoredAlarmCodes()).containsExactly("17");
     }
 

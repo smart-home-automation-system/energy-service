@@ -38,8 +38,8 @@ eLicznik portal (HAS-340), and reviews them in IntelliJ.
   street of the house and their reminders by SMS; the daily energy summary (HAS-339), an info at 21:30.
 - Uses libraries: `cholewa-commons` 1.14.0 since HAS-340 (the pooled `ConnectionFactory`, the required
   properties, the scheduler pool and `ScheduledPass`, the error contract, `NotificationConnection` and the
-  `...Sms` methods of `NotificationPublisher` - HAS-334), `smart-home-sdk` 1.19.0 since HAS-340 (the kind
-  `inverter` and `InverterBinding`, HAS-326),
+  `...Sms` methods of `NotificationPublisher` - HAS-334), `smart-home-sdk` 1.21.0 since HAS-435 (a no-op bump - the registry is read by
+  `?kind=inverter`; the kind `inverter` and `InverterBinding`, HAS-326),
   `shelly-client` 2.7.0 since HAS-340 **with its beans on** (`ShellyRpcClient`, `ShellyGen1Client`,
   `ShellyMqttDecoder`; pinned by `EnergyServiceApplicationTest`) - 2.3.0 brought `EmStatus`, `EmDataStatus`
   and their RPC reads for HAS-327.
@@ -58,6 +58,10 @@ eLicznik portal (HAS-340), and reviews them in IntelliJ.
   `USAGE, CREATE` on `public` only).
 - Spring Boot 4.1.2, logbook 4.2.0; own libraries on the latest releases, as the org rule asks of
   every service task.
+- **Imports, never a fully qualified class name in code** (owner, 2026-11-12; HAS-435 removed the last ones): a class
+  of another package is imported, also in tests - no `org.springframework.http.MediaType.APPLICATION_JSON`,
+  `org.mockito.Mockito.times(1)` or `new java.util.ArrayList<>()` inline. Before a change is done, search the diff for a
+  package path followed by a class name outside the `import` and `package` lines.
 
 ## Specifics
 

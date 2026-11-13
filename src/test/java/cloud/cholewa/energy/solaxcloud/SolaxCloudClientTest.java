@@ -8,6 +8,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Flux;
 import reactor.test.StepVerifier;
 
 import java.io.IOException;
@@ -298,7 +299,7 @@ class SolaxCloudClientTest {
         server.enqueue(json(CloudSamples.sample("plant")));
         server.enqueue(json(CloudSamples.sample("plant")));
 
-        reactor.core.publisher.Flux.merge(client.plant(), client.plant()).as(StepVerifier::create)
+        Flux.merge(client.plant(), client.plant()).as(StepVerifier::create)
             .expectNextCount(2)
             .verifyComplete();
 

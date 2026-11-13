@@ -21,6 +21,7 @@ import reactor.test.StepVerifier;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -131,7 +132,7 @@ class EnergyStatusServiceTest {
         when(cloudTracker.current()).thenReturn(new SolaxCloudState(null, null, readAt, false));
 
         energyStatusService.status().as(StepVerifier::create)
-            .assertNext(sources -> org.assertj.core.api.Assertions.assertThat(sources.get(3))
+            .assertNext(sources -> assertThat(sources.get(3))
                 .isEqualTo(new SourceStatusReply("solaxCloud", false, readAt)))
             .verifyComplete();
     }

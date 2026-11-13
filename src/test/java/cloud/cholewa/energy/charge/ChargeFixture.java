@@ -28,6 +28,7 @@ import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -64,7 +65,7 @@ final class ChargeFixture {
         grid(300.0);
         when(client.setSelfUse(any())).thenReturn(Mono.just("r-1"));
         when(publisher.publishInfo(anyString())).thenReturn(Mono.empty());
-        when(outages.setSkipAutomation(any(), org.mockito.ArgumentMatchers.anyBoolean())).thenReturn(Mono.just(1));
+        when(outages.setSkipAutomation(any(), anyBoolean())).thenReturn(Mono.just(1));
         when(repository.save(any())).thenAnswer(call -> {
             final BatteryChargeRunEntity row = call.getArgument(0);
             final BatteryChargeRunEntity saved = row.id() == null ? row.withId(ids.incrementAndGet()) : row;

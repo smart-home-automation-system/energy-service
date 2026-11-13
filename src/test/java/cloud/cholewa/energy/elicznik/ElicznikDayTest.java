@@ -8,6 +8,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -93,7 +94,7 @@ class ElicznikDayTest {
 
     @Test
     void should_not_take_an_hour_answered_twice() {
-        final List<ElicznikAnswers.Hour> twice = new java.util.ArrayList<>(hours(CONSUM_2026_11_08));
+        final List<ElicznikAnswers.Hour> twice = new ArrayList<>(hours(CONSUM_2026_11_08));
         twice.set(1, new ElicznikAnswers.Hour(1, false, BigDecimal.ONE));
 
         assertThat(ElicznikDay.whole(LocalDate.of(2026, 11, 8), HOUSE, twice, hours(OZE_2026_11_08), FETCHED)).isEmpty();
