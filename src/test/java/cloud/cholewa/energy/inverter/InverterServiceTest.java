@@ -5,6 +5,7 @@ import cloud.cholewa.energy.api.model.PhaseReply;
 import cloud.cholewa.energy.api.model.PvReply;
 import cloud.cholewa.energy.error.EnergyError;
 import cloud.cholewa.energy.error.EnergyException;
+import cloud.cholewa.energy.registry.Inverter;
 import cloud.cholewa.energy.registry.InverterRegistry;
 import cloud.cholewa.energy.solax.RunMode;
 import cloud.cholewa.energy.sofar.SofarSamples;
@@ -17,6 +18,7 @@ import cloud.cholewa.energy.solax.SolaxTracker;
 import cloud.cholewa.energy.solaxcloud.CloudSamples;
 import cloud.cholewa.energy.solaxcloud.SolaxCloudState;
 import cloud.cholewa.energy.solaxcloud.SolaxCloudTracker;
+import cloud.cholewa.home.model.InverterBrand;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import reactor.test.StepVerifier;
@@ -241,8 +243,8 @@ class InverterServiceTest {
             .assertNext(reply -> assertThat(reply.source()).isEqualTo("local"))
             .verifyComplete();
 
-        when(registry.current()).thenReturn(Optional.of(List.of(new cloud.cholewa.energy.registry.Inverter(ID,
-            "SOLAX inverter", null, cloud.cholewa.home.model.InverterBrand.SOLAX, "H0000000000000", "192.0.2.158",
+        when(registry.current()).thenReturn(Optional.of(List.of(new Inverter(ID,
+            "SOLAX inverter", null, InverterBrand.SOLAX, "H0000000000000", "192.0.2.158",
             "SABCDEFGHI", null, null))));
         when(cloudTracker.current()).thenReturn(new SolaxCloudState(CloudSamples.inverterAt("2026-10-27 20:45:00"),
             null, READ_AT, true));

@@ -7,6 +7,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -33,9 +34,9 @@ class AutomationRulesTest {
         "true, 45, 04:05, 04:04, WAIT", "true, 45, 04:05, 04:05, START"})
     void should_decide_what_a_pass_does(final boolean on, final Double soc, final String start, final String now,
                                          final AutomationRules.Step step) {
-        final LocalDateTime planned = start == null ? null : LocalDateTime.of(2026, 11, 12, 0, 0).with(java.time.LocalTime.parse(start));
+        final LocalDateTime planned = start == null ? null : LocalDateTime.of(2026, 11, 12, 0, 0).with(LocalTime.parse(start));
         assertThat(AutomationRules.stepOf(on, soc, planned, LocalDateTime.of(2026, 11, 12, 0, 0)
-            .with(java.time.LocalTime.parse(now)))).isEqualTo(step);
+            .with(LocalTime.parse(now)))).isEqualTo(step);
     }
 
     @ParameterizedTest

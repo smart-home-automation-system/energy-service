@@ -25,6 +25,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.groups.Tuple.tuple;
 
 //elicznik_hour and elicznik_meter (V15, HAS-340) on PostgreSQL: a row inserted once and never changed, the two hours 3 of
 //the night the clocks go back, the checks of the table, the sums of a day
@@ -83,8 +84,8 @@ class ElicznikRepositoryTest {
         repository.findHours(BACK, BACK).collectList().as(StepVerifier::create)
             .assertNext(hours -> assertThat(hours).extracting(ElicznikHourEntity::repeated, ElicznikHourEntity::imported)
                 .containsExactly(
-                    org.assertj.core.groups.Tuple.tuple(true, new BigDecimal("1.392")),
-                    org.assertj.core.groups.Tuple.tuple(false, new BigDecimal("1.363"))))
+                    tuple(true, new BigDecimal("1.392")),
+                    tuple(false, new BigDecimal("1.363"))))
             .verifyComplete();
         repository.hoursADay(BACK, BACK).as(StepVerifier::create)
             .expectNext(new ElicznikRepository.DayHours(BACK, 2))
