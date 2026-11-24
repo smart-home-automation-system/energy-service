@@ -15,7 +15,7 @@ import java.util.Locale;
 //window of the run; a window across midnight runs to 23:59 in period 1 and on from 00:00 in period 2 (checked on the
 //first real run). The standing base (HAS-494) is the baseline the owner runs - its grid charge, no charge window
 //(00:00 - 00:00), its discharge window, period 2 off - or the battery reserve: the floor and the grid charge limit at the
-//level, the grid charging all day (00:00 - 23:59)
+//level, the grid charging all day (00:00 - 23:59); the reserve is sent as the Back Up work mode, which takes the same body
 final class SelfUseCommand {
 
     private static final DateTimeFormatter HH_MM = DateTimeFormatter.ofPattern("HH:mm", Locale.ROOT);

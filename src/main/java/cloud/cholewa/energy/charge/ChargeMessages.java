@@ -23,7 +23,8 @@ final class ChargeMessages {
         return "Battery charging from the grid not started (" + run.source() + "): " + reason(run) + ".";
     }
 
-    static String ended(final BatteryChargeRunEntity run) {
+    //the end of a run and the standing work mode it set back - the reserve in Back Up, the baseline in Self Use (HAS-494)
+    static String ended(final BatteryChargeRunEntity run, final SelfUseBase base) {
         final String why = switch (run.endedBy()) {
             case ChargeRules.BY_TARGET -> "target reached";
             case ChargeRules.BY_WINDOW -> "window over";
@@ -32,7 +33,9 @@ final class ChargeMessages {
         };
         return "Battery charging from the grid ended - " + why + " at " + soc(run.socAtEnd()) + " (started "
             + HouseTimes.hour(run.windowStart()) + " at " + soc(run.socAtStart())
-            + "); the inverter set back to Self Use.";
+            + "); the inverter set back to " + base.reserveLevel()
+                .map(level -> "the battery reserve of " + level + " % (Back Up).")
+                .orElse("Self Use.");
     }
 
     private static String reason(final BatteryChargeRunEntity run) {

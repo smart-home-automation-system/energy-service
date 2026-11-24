@@ -39,5 +39,6 @@ class ReserveWatchTest {
         watch.watch().as(StepVerifier::create).verifyComplete();
 
         verify(fixture.client, never()).setSelfUse(any());
+        verify(fixture.client, never()).setBackUp(any());
     }
 }

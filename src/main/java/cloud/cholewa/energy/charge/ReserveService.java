@@ -111,7 +111,7 @@ public class ReserveService {
                 .flatMap(saved -> toldWritten(row, saved)))
             .then()
             .onErrorResume(failure -> Mono.fromRunnable(() -> log.warn(
-                "The write of the standing Self Use {} was not recorded on the battery reserve: {}", requestId,
+                "The write of the standing work mode {} was not recorded on the battery reserve: {}", requestId,
                 failure.toString())));
     }
 
@@ -153,7 +153,7 @@ public class ReserveService {
         return Mono.just(status)
             .filter(answered -> answered == EXECUTING)
             .flatMap(executing -> repository.save(row.withWriteOutcome(TAKEN))
-                .doOnNext(taken -> log.info("The standing Self Use {} taken by the inverter", row.writeRequestId())))
+                .doOnNext(taken -> log.info("The standing work mode {} taken by the inverter", row.writeRequestId())))
             .switchIfEmpty(Mono.just(status)
                 .filter(NOT_CARRIED_OUT::contains)
                 .flatMap(failed -> failed(row, "the SolaX cloud answered status " + failed)))
@@ -196,7 +196,7 @@ public class ReserveService {
             .flatMap(attempt -> Mono.justOrEmpty(attempt.requestId())
                 .flatMap(requestId -> repository.save(row.withWriteOutcome(SENT).withWriteRequestId(requestId)
                     .withWriteAttemptedAt(now())))
-                .doOnNext(saved -> log.info("The standing Self Use written ({}): command {}", setting(saved),
+                .doOnNext(saved -> log.info("The standing work mode written ({}): command {}", setting(saved),
                     saved.writeRequestId()))
                 .flatMap(saved -> toldWritten(row, saved))
                 .switchIfEmpty(Mono.defer(() -> failed(row, attempt.failure()))))
@@ -223,7 +223,7 @@ public class ReserveService {
     }
 
     private Mono<EnergyReserveEntity> failed(final EnergyReserveEntity row, final String why) {
-        log.warn("The standing Self Use ({}) was not written: {}", setting(row), why);
+        log.warn("The standing work mode ({}) was not written: {}", setting(row), why);
         return repository.save(row.withWriteOutcome(FAILED).withWriteRequestId(null).withWriteAttemptedAt(now()))
             .flatMap(saved -> Mono.just(row)
                 .filter(before -> !FAILED.equals(before.writeOutcome()))

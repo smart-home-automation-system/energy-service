@@ -59,7 +59,8 @@ planned outage of Tauron.
   ends the run at its target or the end of its window and sets the Self Use the owner runs back; stored in
   `battery_charge_run`, told on Discord;
 - **the battery reserve** (HAS-494): `PUT /home/energy/battery/reserve` holds a part of the SOLAX battery for a grid
-  outage - the Self Use floor and the grid charge limit at the level, the grid charging all day, so the battery is topped
+  outage - the Back Up work mode of the inverter with its floor and the grid charge limit at the level (the floor of Self
+  Use is not taken through the API), the grid charging all day, so the battery is topped
   up to the reserve while the grid is present and the panels charge it above; it is used only in EPS (down to the EPS
   Min SOC of the inverter, not written by the service). Off by default, optionally until a time; the end of every charge
   sets it back, a write not taken is told on Discord and tried again every 10 minutes;

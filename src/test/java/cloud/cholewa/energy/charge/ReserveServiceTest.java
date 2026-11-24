@@ -61,8 +61,10 @@ class ReserveServiceTest {
             .verifyComplete();
 
         assertThat(fixture.reserveRow.get().writeRequestId()).isEqualTo("r-1");
-        verify(fixture.client).setSelfUse(argThat((JsonNode body) -> reserveOf(body, 80)
+        verify(fixture.client).setBackUp(argThat((JsonNode body) -> reserveOf(body, 80)
             && body.path("snList").get(0).asString().equals(SERIAL)));
+        //the reserve in Back Up (owner, 2026-11-24 - the floor of Self Use was not taken)
+        verify(fixture.client, never()).setSelfUse(any());
     }
 
     @Test
@@ -83,7 +85,7 @@ class ReserveServiceTest {
                 refused -> assertThat(refused.getError()).isEqualTo(EnergyError.INVALID_RESERVE)));
 
         assertThat(fixture.reserveRow.get()).isEqualTo(ChargeSamples.reserveNeverWritten());
-        verify(fixture.client, never()).setSelfUse(any());
+        verify(fixture.client, never()).setBackUp(any());
     }
 
     @Test
@@ -95,14 +97,14 @@ class ReserveServiceTest {
             .verifyComplete();
         pass();
 
-        verify(fixture.client, never()).setSelfUse(any());
+        verify(fixture.client, never()).setBackUp(any());
     }
 
     @Test
     void should_write_a_change_within_the_minute_with_the_next_pass() {
         fixture.reserve.replace(new ReserveRequest(true, 80, null)).as(StepVerifier::create)
             .expectNextCount(1).verifyComplete();
-        when(fixture.client.setSelfUse(any())).thenReturn(Mono.just("r-2"));
+        when(fixture.client.setBackUp(any())).thenReturn(Mono.just("r-2"));
 
         fixture.reserve.replace(new ReserveRequest(true, 90, null)).as(StepVerifier::create)
             .assertNext(reply -> assertThat(reply.writeState()).isEqualTo("pending"))
@@ -116,27 +118,27 @@ class ReserveServiceTest {
 
         assertThat(fixture.reserveRow.get().writeOutcome()).isEqualTo("sent");
         assertThat(fixture.reserveRow.get().writeRequestId()).isEqualTo("r-2");
-        verify(fixture.client).setSelfUse(argThat((JsonNode body) -> reserveOf(body, 90)));
+        verify(fixture.client).setBackUp(argThat((JsonNode body) -> reserveOf(body, 90)));
     }
 
     @Test
     void should_tell_a_failed_write_once_and_try_again_after_ten_minutes() {
-        when(fixture.client.setSelfUse(any())).thenReturn(Mono.error(new SolaxCloudException("code 10500")));
+        when(fixture.client.setBackUp(any())).thenReturn(Mono.error(new SolaxCloudException("code 10500")));
 
         fixture.reserve.replace(new ReserveRequest(true, 80, null)).as(StepVerifier::create)
             .assertNext(reply -> assertThat(reply.writeState()).isEqualTo("failed"))
             .verifyComplete();
         fixture.moveTo(NOW.plusMinutes(9));
         pass();
-        verify(fixture.client, times(1)).setSelfUse(any());
+        verify(fixture.client, times(1)).setBackUp(any());
 
         fixture.moveTo(NOW.plusMinutes(10));
         pass();
-        verify(fixture.client, times(2)).setSelfUse(any());
+        verify(fixture.client, times(2)).setBackUp(any());
         verify(fixture.publisher, times(1)).publishAlert("The battery reserve of 80 % was not written to the "
             + "inverter: the SolaX cloud refused the command; tried again every 10 minutes.");
 
-        when(fixture.client.setSelfUse(any())).thenReturn(Mono.just("r-3"));
+        when(fixture.client.setBackUp(any())).thenReturn(Mono.just("r-3"));
         fixture.moveTo(NOW.plusMinutes(20));
         pass();
 
@@ -153,7 +155,7 @@ class ReserveServiceTest {
         pass();
 
         assertThat(fixture.reserveRow.get().writeOutcome()).isEqualTo("taken");
-        verify(fixture.client, never()).setSelfUse(any());
+        verify(fixture.client, never()).setBackUp(any());
     }
 
     @Test
@@ -203,7 +205,7 @@ class ReserveServiceTest {
         fixture.reserveRow.set(ChargeSamples.reserveHeld());
         pass();
 
-        verify(fixture.client, never()).setSelfUse(any());
+        verify(fixture.client, never()).setBackUp(any());
     }
 
     @Test

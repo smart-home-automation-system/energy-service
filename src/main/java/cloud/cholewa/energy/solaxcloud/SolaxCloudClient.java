@@ -126,8 +126,17 @@ public class SolaxCloudClient {
     //the Self Use work mode of the inverters of the body (HAS-336): the request id of the command - an answer without one
     //is a failed call
     public Mono<String> setSelfUse(final JsonNode body) {
-        return call(value -> postRequest("/openapi/v2/device/inverter_work_mode/batch_set_spontaneity_self_use", body,
-            value))
+        return workMode("/openapi/v2/device/inverter_work_mode/batch_set_spontaneity_self_use", body);
+    }
+
+    //the Back Up work mode of the inverters of the body (HAS-494 - the battery reserve): the fields of the Self Use, as the
+    //documentation of the platform gives them (read 2026-11-24); the request id of the command
+    public Mono<String> setBackUp(final JsonNode body) {
+        return workMode("/openapi/v2/device/inverter_work_mode/batch_set_peace_mode", body);
+    }
+
+    private Mono<String> workMode(final String path, final JsonNode body) {
+        return call(value -> postRequest(path, body, value))
             .map(root -> root.path("requestId").asString(""))
             .filter(requestId -> !requestId.isBlank())
             .switchIfEmpty(Mono.error(() -> new SolaxCloudException("The SolaX cloud answered no request id")));
