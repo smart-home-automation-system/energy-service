@@ -167,6 +167,18 @@ class FrequencyWatchTest {
             .verifyComplete();
     }
 
+    //one work announced in two rows for other streets of the town (2026-11-24) is told once; another one stays
+    @Test
+    void should_tell_outages_worded_the_same_once() {
+        when(outages.findByClosedAtIsNullAndEndsAtAfterOrderByStartsAt(any()))
+            .thenReturn(Flux.just(outage("town"), outage("town"), outage("street")));
+
+        watch.cause(T0).as(StepVerifier::create)
+            .expectNext("the house is likely fed by a generator of Tauron: a planned outage in the town "
+                + "Tue 24 Nov 06:00-18:00; a planned outage at the street of the house Tue 24 Nov 06:00-18:00")
+            .verifyComplete();
+    }
+
     @Test
     void should_never_decide_on_a_stale_meter() {
         when(gridService.grid()).thenReturn(Mono.just(grid(51.0, true)));
