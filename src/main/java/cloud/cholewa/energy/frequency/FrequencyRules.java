@@ -81,7 +81,7 @@ final class FrequencyRules {
         }
         final boolean off = properties.off(hz);
         if (open.isPresent()) {
-            return withOpen(reading, hz, off, open.get(), memory, cause, properties, now);
+            return withOpen(reading, open.get(), memory, cause, properties, now);
         }
         if (!off) {
             return Outcome.quiet(Memory.EMPTY);
@@ -99,10 +99,11 @@ final class FrequencyRules {
                 + "the battery from the grid.");
     }
 
-    private static Outcome withOpen(final Reading reading, final double hz, final boolean off, final SourceAlertEntity open,
-                                    final Memory memory, final String cause, final FrequencyProperties properties,
-                                    final LocalDateTime now) {
-        if (off) {
+    //a reading whose frequency is known - decide checked it
+    private static Outcome withOpen(final Reading reading, final SourceAlertEntity open, final Memory memory,
+                                    final String cause, final FrequencyProperties properties, final LocalDateTime now) {
+        final double hz = reading.hz();
+        if (properties.off(hz)) {
             final Memory held = memory.seen(hz).withBackSince(null);
             final boolean due = open.lastToldAt() == null
                 || !now.isBefore(open.lastToldAt().plus(properties.reminderEvery()));
