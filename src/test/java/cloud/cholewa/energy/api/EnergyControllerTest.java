@@ -43,6 +43,9 @@ import cloud.cholewa.energy.api.model.ChargeReply;
 import cloud.cholewa.energy.api.model.ChargeRequest;
 import cloud.cholewa.energy.api.model.ChargeRunReply;
 import cloud.cholewa.energy.api.model.PlannedOutageReply;
+import cloud.cholewa.energy.api.model.ReserveReply;
+import cloud.cholewa.energy.api.model.ReserveRequest;
+import cloud.cholewa.energy.charge.ReserveService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webflux.test.autoconfigure.WebFluxTest;
@@ -97,6 +100,8 @@ class EnergyControllerTest {
     private ChargeService chargeService;
     @MockitoBean
     private AutomationService automationService;
+    @MockitoBean
+    private ReserveService reserveService;
     @MockitoBean
     private ForecastService forecastService;
     @MockitoBean
@@ -240,6 +245,46 @@ class EnergyControllerTest {
             .exchange()
             .expectStatus().isOk()
             .expectBody().jsonPath("$.chargeBeforeOutage").isEqualTo(true);
+    }
+
+    //HAS-494, the contract of the reserve card of the energy page (HAS-496): written out whole
+    @Test
+    void should_answer_the_battery_reserve() {
+        when(reserveService.settings()).thenReturn(Mono.just(new ReserveReply(true, 80,
+            LocalDateTime.of(2026, 11, 25, 18, 0), LocalDateTime.of(2026, 11, 24, 10, 0), "sent",
+            LocalDateTime.of(2026, 11, 24, 10, 0, 2))));
+
+        webTestClient.get().uri("/battery/reserve")
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody().json("""
+                {"enabled": true, "level": 80, "until": "2026-11-25T18:00:00", "updatedAt": "2026-11-24T10:00:00",
+                 "writeState": "sent", "writeAttemptedAt": "2026-11-24T10:00:02"}""", JsonCompareMode.STRICT);
+    }
+
+    @Test
+    void should_answer_a_reserve_never_set_without_its_dates() {
+        when(reserveService.settings()).thenReturn(Mono.just(new ReserveReply(false, 80, null, null, "none", null)));
+
+        webTestClient.get().uri("/battery/reserve")
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody().json("""
+                {"enabled": false, "level": 80, "writeState": "none"}""", JsonCompareMode.STRICT);
+    }
+
+    @Test
+    void should_replace_the_battery_reserve() {
+        when(reserveService.replace(new ReserveRequest(true, 80, LocalDateTime.of(2026, 11, 25, 18, 0))))
+            .thenReturn(Mono.just(new ReserveReply(true, 80, LocalDateTime.of(2026, 11, 25, 18, 0),
+                LocalDateTime.of(2026, 11, 24, 10, 0), "pending", null)));
+
+        webTestClient.put().uri("/battery/reserve")
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue("{\"enabled\": true, \"level\": 80, \"until\": \"2026-11-25T18:00:00\"}")
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody().jsonPath("$.writeState").isEqualTo("pending");
     }
 
     @Test
