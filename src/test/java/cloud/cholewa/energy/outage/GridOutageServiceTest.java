@@ -38,13 +38,16 @@ class GridOutageServiceTest {
             .thenReturn(Flux.just(
                 new GridOutageEntity(1L, FROM.plusDays(3), FROM.plusDays(3).plusHours(2), 80.0, 52.0, 52.0,
                     FROM.plusDays(3).plusHours(1), null),
+                GridOutageEntity.inferred(FROM.plusDays(10), FROM.plusDays(10).plusMinutes(1), FROM.plusDays(11))
+                    .withId(3L),
                 new GridOutageEntity(2L, FROM.plusDays(30), null, 64.0, null, 18.0, FROM.plusDays(30), null)));
 
         service.outages(FROM, to)
             .as(StepVerifier::create)
             .expectNext(List.of(
-                new OutageReply(FROM.plusDays(3), FROM.plusDays(3).plusHours(2), 80.0, 52.0, 52.0),
-                new OutageReply(FROM.plusDays(30), null, 64.0, null, 18.0)))
+                new OutageReply(FROM.plusDays(3), FROM.plusDays(3).plusHours(2), 80.0, 52.0, 52.0, false),
+                new OutageReply(FROM.plusDays(10), FROM.plusDays(10).plusMinutes(1), null, null, null, true),
+                new OutageReply(FROM.plusDays(30), null, 64.0, null, 18.0, false)))
             .verifyComplete();
     }
 

@@ -43,7 +43,8 @@ planned outage of Tauron.
   public library) is established on answers compared with SolaxCloud by night and by day;
 - **the outages of the grid** as the SOLAX sees them (HAS-334): the loss, the hourly reminders, a low battery and
   the return told on Discord - the loss, the low battery and the return also by SMS to the administrators of the
-  household - stored in `grid_outage`, `GET /home/energy/outages` and the grid in `/status`;
+  household - stored in `grid_outage`, `GET /home/energy/outages` and the grid in `/status`; an outage the house and
+  the service were down through seen after the fact from the uptime of the grid meter (HAS-505), stored as `inferred`;
 - **the sources watched** (HAS-332): the SOLAX dongle and the grid meter silent, a phase of the meter overloaded -
   told on Discord, stored in `source_alert`;
 - **the SolaX cloud** (HAS-329): the backup of the dongle - the SOLAX and its battery from the SolaX Developer Platform
@@ -109,7 +110,12 @@ cluster runs in the house.
 - **A restart during an outage keeps its row**: the open outage is read from the database before anything is
   decided, and the reads of the SOLAX close it when the grid is back.
 - **The limit**: with the battery empty, or the inverter off, the service is down with the house - an outage is
-  told only while the inverter runs. After a start the grid is not known (`null`) until two reads agree, and it is
+  told live only while the inverter runs. **An outage it was down through is seen after the fact** (HAS-505): the Pro
+  3EM loses its power with the grid, so every minute its uptime (`sys` of `Shelly.GetStatus`) is compared with the time
+  it was last seen (`meter_uptime`) - a start after it with the reset reason power-on is stored as `inferred`, between
+  those two times as bounds and without a state of charge, and told once on Discord (no SMS); a restart of the meter
+  itself (another reset reason) or one without a reset reason stores nothing, and nothing is stored over an outage the
+  live watch stored or holds. After a start the grid is not known (`null`) until two reads agree, and it is
   not known while the SOLAX is stale (a stored outage stays `lost`); a restart while the database cannot be read
   decides nothing until it can.
 
@@ -292,7 +298,7 @@ Under the base path `/home/energy`, routed by the gateway by path, every method.
 | `GET` | `/home/energy/inverters` | every inverter of the device registry: `id` (`solax`, `sofar`), `registryId`, `name`, `room`, and from its last reading `runMode` (the SOLAX: `waiting`, `checking`, `normal`, `fault`, `permanent fault`, `updating`, `eps check`, `eps`, `self test`, `idle`, `standby`), `state` and `faults` (the SOFAR: its state and its faults in the words of the Solarman cloud - `Grid connected`, `[]` without a fault), `acPower` (W), `phases` `a` / `b` / `c` (`voltage`, `current`, `activePower`), `pvPower` (W of the panels together), `pv` `pv1` / `pv2` (`voltage`, `current`, `power` of each string; 0 at night), `gridPower` (W the meter of the SOLAX measures at the grid, positive while the house takes from it - the grid itself is `/grid`), `frequency`, `powerFactor`, `temperature` (°C), `dailyYield` / `totalYield` (kWh), `measuredAt`, `stale` (no reading, older than 1 min, or the last read failed), `source` (`local` - the dongle, or `cloud` - the SolaX cloud while the dongle is stale, without `runMode` and `gridPower`; `solarman-cloud` for the SOFAR, `measuredAt` the time its logger collected the reading, stale after 15 min, without `gridPower` and `powerFactor`; left out without a reading). An inverter without a reading answers its registry entry and `stale`. `503 REGISTRY_UNAVAILABLE` until the registry was read once |
 | `GET` | `/home/energy/inverters/{id}` | one inverter by its brand, as above; `404 NOT_FOUND_INVERTER` for another id or a brand not registered |
 | `GET` | `/home/energy/battery` | the battery of the SOLAX now: `soc` (%), `health` (SOH %), `power` (W, positive while charging, negative while discharging), `direction` (`charging`, `discharging`, `idle` within 20 W), `voltage`, `current`, `temperature`, `cycles`, `remainingKwh` (the SOC of the usable capacity), `chargedToday` / `dischargedToday` (kWh), `measuredAt`, `stale`, `source` (`local` or `cloud` as for the inverters; the cloud without `chargedToday` / `dischargedToday`). Before the first reading only `{"stale": true}` |
-| `GET` | `/home/energy/outages?from=&to=` | the outages of the grid that started in `[from, to)` (house times, ISO `2026-10-01T00:00:00`), the oldest first: `startedAt`, `endedAt` (left out while it lasts), `socAtStart`, `socAtEnd`, `lowestSoc` (%; a value not known left out). `400 INVALID_RANGE` when `from` is not before `to` or they are more than 366 days apart, `400` without either |
+| `GET` | `/home/energy/outages?from=&to=` | the outages of the grid that started in `[from, to)` (house times, ISO `2026-10-01T00:00:00`), the oldest first: `startedAt`, `endedAt` (left out while it lasts), `socAtStart`, `socAtEnd`, `lowestSoc` (%; a value not known left out), `inferred` (always written - `true` for an outage seen after the fact from the uptime of the grid meter, HAS-505: its times are bounds, no SOC). `400 INVALID_RANGE` when `from` is not before `to` or they are more than 366 days apart, `400` without either |
 | `GET` | `/home/energy/outages/planned` | the outages Tauron announces for the house that have not ended, the soonest first (HAS-337): `startsAt`, `endsAt` (house times), `kind` (`planned`, `unplanned` - a failure), `scope` (`street` - the announcement names the street of the house, `town` - the town alone), `description` (the words of Tauron, which streets), `firstSeenAt`, `notifiedAt` (the last notice, left out until one was published), `skipAutomation`, `id` (for the skip), `plannedChargeStart` (when the automation would start the charge - on the next planned outage of the street only, left out otherwise); `[]` without one |
 | `PUT` | `/home/energy/outages/planned/{id}/skip`, `/unskip` | no automatic charge for this outage, or allowed again (HAS-338); the outage as above; `404 NOT_FOUND_PLANNED_OUTAGE` for one not announced any more |
 | `GET` | `/home/energy/automation` | the settings of the automatic charge before a planned outage (HAS-338): `chargeBeforeOutage` (always written, `false` until turned on), `targetSoc`, `chargePowerKw`, `marginMinutes`, `updatedAt` (left out before the first change) |
