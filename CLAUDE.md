@@ -37,7 +37,7 @@ eLicznik portal (HAS-340), and reviews them in IntelliJ.
   the return marked for an SMS; the silence of the SOLAX dongle and the grid meter and the overload of a phase
   (HAS-332), Discord only; the alarms of the SOLAX from the SolaX cloud (HAS-329); the faults of the SOFAR (HAS-330); an inverter that does not produce in the sun (HAS-333); the planned outages of Tauron (HAS-337) - those of the
   street of the house and their reminders by SMS; the daily energy summary (HAS-339), an info at 21:30.
-- Uses libraries: `cholewa-commons` 1.14.0 since HAS-340 (the pooled `ConnectionFactory`, the required
+- Uses libraries: `cholewa-commons` 2.0.0 since HAS-494 (Boot 4.2.0, `spring-boot-starter-rabbitmq`; 1.14.0 since HAS-340) (the pooled `ConnectionFactory`, the required
   properties, the scheduler pool and `ScheduledPass`, the error contract, `NotificationConnection` and the
   `...Sms` methods of `NotificationPublisher` - HAS-334), `smart-home-sdk` 1.25.0 since HAS-494 (a no-op bump - the registry is read by
   `?kind=inverter`; the kind `inverter` and `InverterBinding`, HAS-326),
@@ -57,7 +57,7 @@ eLicznik portal (HAS-340), and reviews them in IntelliJ.
   local run (the recipe of water-service: PostgreSQL with `-c ssl=on` and the snakeoil
   certificate, `MSYS_NO_PATHCONV=1` in Git Bash; V1 was run that way, as a user granted
   `USAGE, CREATE` on `public` only).
-- Spring Boot 4.1.3 (4.2.0 moved RabbitMQ to `spring-boot-starter-rabbitmq` - cholewa-commons moves first), logbook
+- Spring Boot 4.2.0 since HAS-494 (`spring-boot-starter-rabbitmq` in place of `spring-boot-starter-amqp`; the host and port of the second connection from `RabbitConnectionDetails`), the plugins of Maven by the Boot parent except tidy, logbook
   4.2.0; own libraries on the latest releases, as the org rule asks of
   every service task.
 - **Imports, never a fully qualified class name in code** (owner, 2026-11-12; HAS-435 removed the last ones): a class
@@ -93,8 +93,9 @@ eLicznik portal (HAS-340), and reviews them in IntelliJ.
   the listener with manual ack, prefetch 3 and observation (`EnergyServiceApplicationTest`). The notifications
   go over a second connection that is **not a bean** (`NotificationConnection` of `cholewa-commons`, built by
   `NotificationRabbitConfig` - since HAS-334): a `ConnectionFactory` bean would switch off the auto-configured one
-  with its listener settings. `NotificationRabbitConfig` / `NotificationConnectionProperties` are the sixth copy
-  (heating, blinds, weather, light, amx) - kept as copies by the owner's choice; a change goes into every copy.
+  with its listener settings. `NotificationRabbitConfig` / `NotificationConnectionProperties` are one of the nine copies
+  (heating, blinds, weather, light, amx, water, gate, safety and this one) - kept as copies by the owner's choice; a change goes into every copy. Since HAS-494
+  (Boot 4.2.0) this copy takes the host and port from `RabbitConnectionDetails`; the others follow with their move to 4.2.0.
 - **The grid meter** (HAS-327, package `meter`):
   - Known by `energy.meter.device-id` and `energy.meter.address` from the manifest, **not by the registry**:
     the Pro 3EM is there already as the BTHome gateway 79 of the garage gate sensors, and one device is one
@@ -423,7 +424,7 @@ eLicznik portal (HAS-340), and reviews them in IntelliJ.
     (the cloud refuses the result to the application of the owner, 10403 - one WARN an hour).
   - **One lane with the charges**: `PUT /battery/reserve`, `ReserveWatch` (a pass a minute, bounded at 50 s) and the
     end of a charge run in `InverterCommands.serially`; at most one write a minute counts the reserve too. A change while
-    a charge is open or being ended is stored as `pending` and written by the end of the run (`ReserveService.sent`);
+    a charge is open or being ended is stored as `pending` and written by the end of the run (`ReserveService.writtenByCharge`);
     a change within the minute of the last write waits for the next pass. A registry not read yet leaves it `pending`;
     no SOLAX with a serial number in it is a failed write. Only the command decides a failure: a database failure after a
     sent command reaches the pass, so a command the inverter took is never told as not written.

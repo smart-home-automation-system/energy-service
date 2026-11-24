@@ -161,7 +161,7 @@ public class ChargeService {
             .zipWith(reserveService.standing())
             .flatMap(both -> commands.restore(both.getT1(), both.getT2()))
             .flatMap(requestId -> repository.save(run.withRestoreRequestId(requestId).withRestoredAt(now()))
-                .flatMap(restored -> reserveService.sent(requestId).thenReturn(restored)))
+                .flatMap(restored -> reserveService.writtenByCharge(requestId).thenReturn(restored)))
             .flatMap(restored -> tell(ChargeMessages.ended(restored)).thenReturn(restored))
             .doOnNext(restored -> log.info("Battery charge {} ended ({}), the baseline of Self Use set back, command {}",
                 restored.id(), restored.endedBy(), restored.restoreRequestId()))

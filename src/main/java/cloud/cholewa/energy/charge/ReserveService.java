@@ -104,7 +104,7 @@ public class ReserveService {
     }
 
     //the standing Self Use written by the end of a charge: the setting is the one now in the inverter
-    Mono<Void> sent(final String requestId) {
+    Mono<Void> writtenByCharge(final String requestId) {
         return read()
             .flatMap(row -> repository.save(row.withWriteOutcome(SENT).withWriteRequestId(requestId)
                     .withWriteAttemptedAt(now()))
