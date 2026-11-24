@@ -48,7 +48,7 @@ class GridSnapshotTest {
         final ArgumentCaptor<GridReadingEntity> row = ArgumentCaptor.forClass(GridReadingEntity.class);
         verify(repository).save(row.capture());
         assertThat(row.getValue()).isEqualTo(new GridReadingEntity(null, LocalDateTime.of(2026, 10, 27, 11, 0),
-            -171.4, 31.2, 26.7, -113.5, 891.01175, 2158.8515, 236.8, 235.4, 234.6));
+            -171.4, 31.2, 26.7, -113.5, 891.01175, 2158.8515, 236.8, 235.4, 234.6, 1.652, null, null, 50.0));
     }
 
     //the counters come once a minute: the readings are written without them until they came
@@ -82,6 +82,22 @@ class GridSnapshotTest {
         tracker.readings(readings(120.0));
         pass.as(StepVerifier::create).verifyComplete();
         verify(repository, times(2)).save(any());
+    }
+
+    //HAS-506: a frequency that moved is a change, with the powers as they were
+    @Test
+    void should_write_a_row_when_only_the_frequency_changed() {
+        saves();
+        tracker.readings(readings(-113.5));
+        final Mono<Void> pass = snapshot.snapshot();
+        pass.as(StepVerifier::create).verifyComplete();
+
+        tracker.readings(readings(-113.5).aFreq(50.01));
+        pass.as(StepVerifier::create).verifyComplete();
+
+        final ArgumentCaptor<GridReadingEntity> row = ArgumentCaptor.forClass(GridReadingEntity.class);
+        verify(repository, times(2)).save(row.capture());
+        assertThat(row.getValue().frequency()).isEqualTo(50.01);
     }
 
     //a write that failed is not taken for one done: the next minute writes the same values

@@ -115,6 +115,27 @@ class HistoryRepositoryTest {
             .verifyComplete();
     }
 
+    //HAS-506: the frequency and the currents of V18 in buckets as any other column; a row of a minute before V18 has none
+    @Test
+    void should_answer_the_frequency_and_the_currents_of_the_grid_meter() {
+        grid(T0.plusMinutes(1), 1000, null);
+        databaseClient.sql("INSERT INTO grid_reading (measured_at, a_current, frequency) VALUES (:at, 4.2, 51.02), "
+                + "(:later, 4.4, 50.98)")
+            .bind("at", T0.plusMinutes(2)).bind("later", T0.plusMinutes(3))
+            .fetch().rowsUpdated().as(StepVerifier::create).expectNext(2L).verifyComplete();
+
+        sut.findHistory(StoredValue.GRID_FREQUENCY, null, T0, T0.plusHours(1), 300).collectList()
+            .as(StepVerifier::create)
+            .assertNext(points -> assertThat(points).containsExactly(
+                new HistoryReply.Point(T0, new BigDecimal("51.00"), new BigDecimal("50.98"), new BigDecimal("51.02"))))
+            .verifyComplete();
+        sut.findHistory(StoredValue.GRID_CURRENT_A, null, T0, T0.plusHours(1), 300).collectList()
+            .as(StepVerifier::create)
+            .assertNext(points -> assertThat(points).containsExactly(
+                new HistoryReply.Point(T0, new BigDecimal("4.30"), new BigDecimal("4.2"), new BigDecimal("4.4"))))
+            .verifyComplete();
+    }
+
     //every part of a sum in one statement: its buckets, and its last value before the range as a row without "at"
     @Test
     void should_read_every_part_of_a_sum_at_once() {

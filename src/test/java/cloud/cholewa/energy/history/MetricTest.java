@@ -14,7 +14,9 @@ class MetricTest {
     @Test
     void should_keep_the_names_of_the_metrics() {
         assertThat(Metric.apiNames()).containsExactly("grid-power", "grid-import-energy", "grid-export-energy",
-            "pv-solax", "pv-sofar", "battery-power", "battery-soc", "pv-power", "house-load");
+            "pv-solax", "pv-sofar", "battery-power", "battery-soc", "pv-power", "house-load",
+            "grid-voltage-a", "grid-voltage-b", "grid-voltage-c", "grid-current-a", "grid-current-b", "grid-current-c",
+            "grid-frequency");
     }
 
     @Test
@@ -26,6 +28,20 @@ class MetricTest {
         assertThat(StoredValue.BATTERY_POWER.column()).isEqualTo("power");
         assertThat(StoredValue.PV_SOFAR.inverter()).isNotNull();
         assertThat(Metric.GRID_POWER.isSum()).isFalse();
+    }
+
+    //HAS-506: the voltages of V2, the currents and the frequency of V18 - each a column of grid_reading, no sum
+    @Test
+    void should_read_the_voltages_the_currents_and_the_frequency_from_the_grid_meter() {
+        assertThat(Metric.GRID_VOLTAGE_B.parts()).containsExactly(new Metric.Part(1, StoredValue.GRID_VOLTAGE_B));
+        assertThat(Metric.GRID_CURRENT_C.parts()).containsExactly(new Metric.Part(1, StoredValue.GRID_CURRENT_C));
+        assertThat(Metric.GRID_FREQUENCY.parts()).containsExactly(new Metric.Part(1, StoredValue.GRID_FREQUENCY));
+        assertThat(StoredValue.GRID_VOLTAGE_A.column()).isEqualTo("a_voltage");
+        assertThat(StoredValue.GRID_CURRENT_A.column()).isEqualTo("a_current");
+        assertThat(StoredValue.GRID_FREQUENCY.column()).isEqualTo("frequency");
+        assertThat(StoredValue.GRID_FREQUENCY.table()).isEqualTo("grid_reading");
+        assertThat(StoredValue.GRID_FREQUENCY.inverter()).isNull();
+        assertThat(Metric.GRID_FREQUENCY.isSum()).isFalse();
     }
 
     //grid_reading.total_power is negative while the house returns energy (V2), battery_reading.power negative while the

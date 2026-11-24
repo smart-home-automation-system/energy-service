@@ -9,7 +9,9 @@ import java.util.Optional;
 //house, pinned by MetricTest and written in the README: every power is W; grid-power is positive while the house takes
 //from the grid, negative while it returns (the grid meter); battery-power is positive while the battery charges, negative
 //while it discharges (the SOLAX); the PV powers are never negative. house-load = pv-solax + pv-sofar + grid-power -
-//battery-power: what the house uses, wherever it comes from
+//battery-power: what the house uses, wherever it comes from. The voltages (V) and the currents (A, never signed) of each
+//phase and the frequency (Hz, the phase furthest from 50 Hz) of the grid meter since HAS-506 - the currents and the
+//frequency stored from V18 on, so their history starts with that deploy
 public enum Metric {
 
     GRID_POWER("grid-power", StoredValue.GRID_POWER),
@@ -22,7 +24,14 @@ public enum Metric {
     BATTERY_SOC("battery-soc", StoredValue.BATTERY_SOC),
     PV_POWER("pv-power", List.of(new Part(1, StoredValue.PV_SOLAX), new Part(1, StoredValue.PV_SOFAR))),
     HOUSE_LOAD("house-load", List.of(new Part(1, StoredValue.PV_SOLAX), new Part(1, StoredValue.PV_SOFAR),
-        new Part(1, StoredValue.GRID_POWER), new Part(-1, StoredValue.BATTERY_POWER)));
+        new Part(1, StoredValue.GRID_POWER), new Part(-1, StoredValue.BATTERY_POWER))),
+    GRID_VOLTAGE_A("grid-voltage-a", StoredValue.GRID_VOLTAGE_A),
+    GRID_VOLTAGE_B("grid-voltage-b", StoredValue.GRID_VOLTAGE_B),
+    GRID_VOLTAGE_C("grid-voltage-c", StoredValue.GRID_VOLTAGE_C),
+    GRID_CURRENT_A("grid-current-a", StoredValue.GRID_CURRENT_A),
+    GRID_CURRENT_B("grid-current-b", StoredValue.GRID_CURRENT_B),
+    GRID_CURRENT_C("grid-current-c", StoredValue.GRID_CURRENT_C),
+    GRID_FREQUENCY("grid-frequency", StoredValue.GRID_FREQUENCY);
 
     private final String apiName;
     private final List<Part> parts;

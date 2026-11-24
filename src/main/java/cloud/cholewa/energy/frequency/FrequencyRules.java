@@ -1,13 +1,12 @@
 package cloud.cholewa.energy.frequency;
 
 import cloud.cholewa.energy.database.SourceAlertEntity;
+import cloud.cholewa.energy.meter.GridFrequency;
 import cloud.cholewa.energy.time.HouseTimes;
 
 import java.time.LocalDateTime;
 import java.util.Locale;
-import java.util.Objects;
 import java.util.Optional;
-import java.util.stream.Stream;
 
 //What the grid frequency is to the household (HAS-503), without I/O - pinned by FrequencyRulesTest. The grid meter decides:
 //its frequency furthest from 50 Hz while its reading is fresh; a frequency not known never decides - the counts start
@@ -22,7 +21,6 @@ final class FrequencyRules {
 
     static final String SOURCE = "meter";
     static final String KIND = "frequency";
-    private static final double NOMINAL = 50.0;
 
     private FrequencyRules() {
     }
@@ -33,10 +31,7 @@ final class FrequencyRules {
 
         //the frequency of the grid meter furthest from 50 Hz, null when no phase is known
         Double hz() {
-            return Stream.of(a, b, c)
-                .filter(Objects::nonNull)
-                .max((left, right) -> Double.compare(Math.abs(left - NOMINAL), Math.abs(right - NOMINAL)))
-                .orElse(null);
+            return GridFrequency.furthestFromNominal(a, b, c);
         }
     }
 
