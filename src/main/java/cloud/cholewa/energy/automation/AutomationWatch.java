@@ -9,6 +9,7 @@ import cloud.cholewa.energy.database.EnergyAutomationEntity;
 import cloud.cholewa.energy.database.PlannedOutageEntity;
 import cloud.cholewa.energy.database.PlannedOutageRepository;
 import cloud.cholewa.energy.error.EnergyException;
+import cloud.cholewa.energy.frequency.FrequencyState;
 import cloud.cholewa.energy.solax.SolaxProperties;
 import cloud.cholewa.energy.tauron.Announcement;
 import cloud.cholewa.energy.tauron.AddressMatch;
@@ -38,6 +39,8 @@ import java.util.function.Supplier;
 //  failed one included; the start told as an info by SMS, the run linked on the outage too (charge_run_id)
 //- a run already going on (manual) is left alone and noted once; the SOC not known - the automation waits and tells once
 //  (an alert, Discord only); a start the cloud refused - told once. The things told once are held in memory per outage
+//- the grid frequency off its band (HAS-503 - a generator of Tauron): the inverter does not connect, so a charge could not
+//  run; the start waits, logged once an outage, and comes once the frequency is back (the frequency alert tells the rest)
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -54,6 +57,7 @@ public class AutomationWatch {
     private final NotificationPublisher notificationPublisher;
     private final OutageLane outageLane;
     private final SolaxProperties solaxProperties;
+    private final FrequencyState frequencyState;
     private final Clock clock;
     private final Set<String> told = ConcurrentHashMap.newKeySet();
 
@@ -91,8 +95,18 @@ public class AutomationWatch {
                     + " waits: the state of charge of the battery is not known."));
             case START -> runs.existsByPlannedOutageId(outage.id())
                 .filter(started -> !started)
-                .flatMap(none -> start(settings, outage));
+                .flatMap(none -> Mono.just(frequencyState.off())
+                    .filter(off -> !off)
+                    .switchIfEmpty(Mono.fromRunnable(() -> waitsForFrequency(outage)))
+                    .flatMap(inside -> start(settings, outage)));
         };
+    }
+
+    private void waitsForFrequency(final PlannedOutageEntity outage) {
+        if (told.add("frequency|" + outage.id())) {
+            log.info("The grid frequency is off its band - the automatic charge before the outage {} waits for it",
+                outage.id());
+        }
     }
 
     private Mono<Void> start(final EnergyAutomationEntity settings, final PlannedOutageEntity outage) {

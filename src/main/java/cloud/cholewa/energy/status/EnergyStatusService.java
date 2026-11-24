@@ -2,6 +2,7 @@ package cloud.cholewa.energy.status;
 
 import cloud.cholewa.energy.api.model.SourceStatusReply;
 import cloud.cholewa.energy.api.model.StatusReply;
+import cloud.cholewa.energy.frequency.FrequencyState;
 import cloud.cholewa.energy.meter.GridMeterState;
 import cloud.cholewa.energy.meter.GridMeterTracker;
 import cloud.cholewa.energy.outage.GridOutageService;
@@ -22,7 +23,7 @@ import java.util.List;
 //(its last will is false, a reading true) and the time of its newest reading. The SOLAX since HAS-328: whether the last
 //read of its dongle succeeded and the time of its last reading. The SolaX cloud since HAS-329. The SOFAR since HAS-330:
 //whether the last read of the Solarman cloud brought a fresh reading and the time its logger collected it. Since HAS-334
-//with the grid as the SOLAX sees it
+//with the grid as the SOLAX sees it, since HAS-503 with the frequency of the grid meter
 @Service
 @RequiredArgsConstructor
 public class EnergyStatusService {
@@ -32,10 +33,12 @@ public class EnergyStatusService {
     private final SolaxCloudTracker solaxCloudTracker;
     private final SofarTracker sofarTracker;
     private final GridOutageService gridOutageService;
+    private final FrequencyState frequencyState;
 
-    //the answer of GET /status: the sources and the grid
+    //the answer of GET /status: the sources and the grid with its frequency
     public Mono<StatusReply> reply() {
-        return status().map(sources -> new StatusReply(sources, gridOutageService.grid()));
+        return status().zipWith(Mono.fromSupplier(frequencyState::current), (sources, frequency) ->
+            new StatusReply(sources, gridOutageService.grid().withFrequency(frequency.hz(), frequency.off())));
     }
 
     public Mono<List<SourceStatusReply>> status() {

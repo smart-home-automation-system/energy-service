@@ -116,8 +116,9 @@ class ElicznikClientTest {
         server.enqueue(json(read(READINGS_EXPORTED)));
 
         client.login()
+            //one after the other: the server answers in the order of the requests, and zipWith sent both at once
             .flatMap(session -> client.hours(session, LocalDate.of(2026, 11, 8), false)
-                .zipWith(client.registers(session, LocalDate.of(2026, 11, 1), LocalDate.of(2026, 11, 9), true)))
+                .zipWhen(hours -> client.registers(session, LocalDate.of(2026, 11, 1), LocalDate.of(2026, 11, 9), true)))
             .as(StepVerifier::create)
             .assertNext(both -> {
                 assertThat(both.getT1()).hasSize(24);
