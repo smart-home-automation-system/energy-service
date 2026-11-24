@@ -362,14 +362,16 @@ class EnergyControllerTest {
                 {"sources": [], "grid": {"state": null, "frequencyOff": null}}""", JsonCompareMode.STRICT);
     }
 
-    //HAS-334: the outages of a range, one still open - its end left out
+    //HAS-334: the outages of a range, one still open - its end left out; HAS-505: one seen after the fact, without a SOC
     @Test
     void should_answer_the_outages_of_a_range() {
         when(gridOutageService.outages(LocalDateTime.of(2026, 10, 1, 0, 0), LocalDateTime.of(2026, 11, 1, 0, 0)))
             .thenReturn(Mono.just(List.of(
                 new OutageReply(LocalDateTime.of(2026, 10, 4, 3, 10), LocalDateTime.of(2026, 10, 4, 5, 2), 80.0,
-                    52.0, 52.0),
-                new OutageReply(LocalDateTime.of(2026, 10, 31, 19, 42), null, 64.0, null, 61.0))));
+                    52.0, 52.0, false),
+                new OutageReply(LocalDateTime.of(2026, 10, 24, 6, 57), LocalDateTime.of(2026, 10, 24, 6, 58), null,
+                    null, null, true),
+                new OutageReply(LocalDateTime.of(2026, 10, 31, 19, 42), null, 64.0, null, 61.0, false))));
 
         webTestClient.get().uri("/outages?from=2026-10-01T00:00:00&to=2026-11-01T00:00:00")
             .exchange()
@@ -377,8 +379,9 @@ class EnergyControllerTest {
             .expectBody().json("""
                 [
                   {"startedAt": "2026-10-04T03:10:00", "endedAt": "2026-10-04T05:02:00", "socAtStart": 80.0,
-                   "socAtEnd": 52.0, "lowestSoc": 52.0},
-                  {"startedAt": "2026-10-31T19:42:00", "socAtStart": 64.0, "lowestSoc": 61.0}
+                   "socAtEnd": 52.0, "lowestSoc": 52.0, "inferred": false},
+                  {"startedAt": "2026-10-24T06:57:00", "endedAt": "2026-10-24T06:58:00", "inferred": true},
+                  {"startedAt": "2026-10-31T19:42:00", "socAtStart": 64.0, "lowestSoc": 61.0, "inferred": false}
                 ]""", JsonCompareMode.STRICT);
     }
 

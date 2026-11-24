@@ -59,6 +59,7 @@ public class GridOutageService {
     }
 
     private static OutageReply replyOf(final GridOutageEntity row) {
-        return new OutageReply(row.startedAt(), row.endedAt(), row.socAtStart(), row.socAtEnd(), row.lowestSoc());
+        return new OutageReply(row.startedAt(), row.endedAt(), row.socAtStart(), row.socAtEnd(), row.lowestSoc(),
+            row.inferred());
     }
 }

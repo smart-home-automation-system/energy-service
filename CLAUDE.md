@@ -13,8 +13,8 @@ SOLAX (HAS-328), the outages of the grid (HAS-334), the monitor of the sources (
 the SOFAR (HAS-330), the balance, history and days (HAS-331), the production watch (HAS-333), the planned outages of
 Tauron (HAS-337), the charge of the battery (HAS-336) and its automation before an outage (HAS-338), the daily energy
 summary (HAS-339), the irradiance forecast (HAS-371) and its judgement and calibration (HAS-372), the readings of the
-eLicznik portal (HAS-340), the battery reserve (HAS-494), the grid frequency alert (HAS-503) and the history of the voltage, the current and the
-frequency (HAS-506), and reviews them in
+eLicznik portal (HAS-340), the battery reserve (HAS-494), the grid frequency alert (HAS-503), the history of the voltage, the current and the
+frequency (HAS-506) and the outages seen after the fact (HAS-505), and reviews them in
 IntelliJ.
 
 ## Role in the system
@@ -186,12 +186,47 @@ IntelliJ.
   - `grid_outage` (V4) holds at most one open row (partial unique index `grid_outage_one_open`, checked on the
     rehearsal); `last_reminded_at` and `low_soc_alerted_at` are there so that a restart neither repeats nor forgets.
   - **The limit**: with the battery empty or the inverter off the service is down with the house - an outage is
-    told only while the inverter runs; an outage that began and ended while the cluster was down is not stored.
+    told live only while the inverter runs. **An outage that began and ended while the cluster was down is seen after
+    the fact since HAS-505** (below).
     After a start the grid is `null` until two reads agree, never read as present.
   - **Rehearsed** (2026-10-31): the released 0.3.0 image applied V1-V3 on a throwaway PostgreSQL with SSL (a user
     with `USAGE, CREATE` on `public` only), the new jar V4; a second open row refused by the index; a restart with
     an open row logged "still open", answered `grid: lost` and the row in `/outages`, the due reminder failing on
     the missing broker without stopping the pass.
+- **The outages seen after the fact** (HAS-505, package `outage`) - what is easy to break:
+  - **Why**: on 2026-11-24 between 07:00 and 08:00 Tauron switched the town to a generator; the battery was at its 10 %
+    floor, so the SOLAX could not go into EPS and the inverter, its dongle, the Pro 3EM and two nodes of the cluster went
+    down with the house - the live watch never saw the outage.
+  - **The fields of `sys` of the real Pro 3EM** (firmware 2.2.1, `Shelly.GetStatus` read 2026-11-24 20:51): `uptime` (s,
+    a whole number - 49940 then, a start at about 06:58), `unixtime`, `time`, `reset_reason` (**1** then - the power-on of
+    the ESP32; 3 is a restart of the software, 4 - 7 a crash or a watchdog, 9 a brownout), `utc_offset`, `ram_*`, `fs_*`,
+    `cfg_rev`. The MQTT decoder of shelly-client reads no `sys` and none was added: `MeterSys` reads it from the raw map of
+    `ShellyRpcClient.status`; an answer without a numeric `uptime` of 0 or more is a failed read.
+  - `MeterRestartWatch` - every minute, bounded at 45 s: the status of the meter, its start (now - uptime) against
+    `meter_uptime` (V19, one row the migration inserts - read once after a start, then held). `MeterRestartRules` (pure):
+    a start after `seen_at` with reset reason 1 is an outage between `seen_at` (the meter last seen, at the latest the
+    start of the outage) and the start (at the earliest its end); another reset reason a restart of the meter (INFO), none
+    not conclusive (WARN) - **nothing stored for either**. Brownout (9) is not taken for a loss.
+  - **Never over an outage stored live**: the open outage and the unsaved row of `GridOutageWatch` (in memory) and
+    `existsOverlapping` of the table (an open row, touching ends included) - an outage the SOLAX saw in EPS ends when the
+    meter starts, so both lie on the window.
+  - **The row of the meter is written only after the outage was stored**: a store that fails leaves `meter_uptime` as it
+    was, so the next pass decides it again (and finds it stored through the overlap if the write had happened). A status
+    that does not answer decides and writes nothing - its first failure in a row a WARN, the answer after it an INFO.
+    The one gap: a pass cut off by its bound after the row was stored and before the info was published tells nothing
+    (the row is the truth, the info is Discord only).
+  - **The start is worked out on the timeline** (`clock.instant()` less the uptime), then in house time; `seen_at` is a
+    house time, so in the hour the clocks go back an outage that began in the repeated hour may be missed - known and
+    accepted, as the staleness of the readings.
+  - `grid_outage.inferred` (V19, default false): the live watch makes its rows with the constructor of eight arguments,
+    never inferred; an inferred row is closed at birth, so the partial unique index and `findFirstByEndedAtIsNull` never
+    see it. `GET /outages` answers `inferred` always. One info on the technical channel (`publishInfo`, cut off after 6 s,
+    swallowed), no SMS - the house was down, the household knows.
+  - **Rehearsed** (2026-11-24): the released 0.20.0 image applied V1-V18 on a throwaway PostgreSQL with SSL with a live
+    outage stored, the new jar V19 against a stub of the meter answering `uptime` 60 and `reset_reason` 1 after `seen_at`
+    was set 5 min back: the inferred row stored between the two, the live row `inferred: false`, `/outages` answering the
+    flag, the info failing on the missing broker without stopping the pass.
+  - Proven by a real event only (owner rule: no grid cut on purpose).
 - **The monitor of the sources** (HAS-332, package `monitor`) - what is easy to break:
   - **Silence is judged by whole passes and kind of call, never by time alone** (HAS-109): the SOLAX is out only while
     its reader fails (`reachable: false`) and nothing came for `solax-silent-after`; the meter only while its last

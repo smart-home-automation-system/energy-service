@@ -4,6 +4,7 @@ import cloud.cholewa.energy.solax.SolaxReading;
 import cloud.cholewa.energy.time.HouseTimes;
 
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 import java.util.Optional;
 
@@ -14,6 +15,7 @@ final class OutageMessages {
 
     static final double EPS_FLOOR_SOC = 10.0;
     private static final double DISCHARGING_BELOW_WATTS = -20.0;
+    private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("d MMM", Locale.ROOT);
 
     private OutageMessages() {
     }
@@ -37,6 +39,18 @@ final class OutageMessages {
     static String back(final LocalDateTime startedAt, final LocalDateTime endedAt, final SolaxReading reading) {
         return "Grid back at " + HouseTimes.hour(endedAt) + " after " + length(startedAt, endedAt) + " - battery "
             + soc(reading) + ".";
+    }
+
+    //an outage seen after the fact (HAS-505): the bounds, each with its day when it is not the day of now
+    static String afterTheFact(final LocalDateTime from, final LocalDateTime to, final LocalDateTime now) {
+        return "The grid was lost while the house was down - between " + when(from, now) + " and " + when(to, now)
+            + " (" + length(from, to) + " at most) the grid meter lost its power; stored after the fact.";
+    }
+
+    private static String when(final LocalDateTime time, final LocalDateTime now) {
+        return time.toLocalDate().equals(now.toLocalDate())
+            ? HouseTimes.hour(time)
+            : DAY.format(time) + " " + HouseTimes.hour(time);
     }
 
     //"1 h 5 min", "25 min"
