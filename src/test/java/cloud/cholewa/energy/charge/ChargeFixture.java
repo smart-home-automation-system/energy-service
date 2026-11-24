@@ -4,6 +4,8 @@ import cloud.cholewa.commons.notification.NotificationPublisher;
 import cloud.cholewa.energy.api.model.BatteryReply;
 import cloud.cholewa.energy.database.BatteryChargeRunEntity;
 import cloud.cholewa.energy.database.BatteryChargeRunRepository;
+import cloud.cholewa.energy.database.EnergyReserveEntity;
+import cloud.cholewa.energy.database.EnergyReserveRepository;
 import cloud.cholewa.energy.api.model.GridReply;
 import cloud.cholewa.energy.automation.AutomationPlan;
 import cloud.cholewa.energy.database.PlannedOutageRepository;
@@ -26,6 +28,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -47,6 +50,9 @@ final class ChargeFixture {
     final BatteryChargeRunRepository repository = mock(BatteryChargeRunRepository.class);
     final Map<Long, BatteryChargeRunEntity> table = new TreeMap<>();
     final ChargeWatchFlag flag = new ChargeWatchFlag();
+    final EnergyReserveRepository reserves = mock(EnergyReserveRepository.class);
+    final AtomicReference<EnergyReserveEntity> reserveRow = new AtomicReference<>(ChargeSamples.reserveNeverWritten());
+    final ReserveService reserve;
     final InverterCommands commands;
     final ChargeService service;
     final ChargeWatch watch;
@@ -56,8 +62,9 @@ final class ChargeFixture {
         moveTo(ChargeSamples.NOW);
         final SolaxProperties solax = new SolaxProperties(Duration.ofSeconds(15), Duration.ofMinutes(1), 26.5);
         commands = new InverterCommands(client, registry, ChargeSamples.PROPERTIES, SolaxSamples.JSON, clock);
+        reserve = new ReserveService(reserves, repository, commands, publisher, ChargeSamples.PROPERTIES, clock);
         service = new ChargeService(repository, commands, batteryService, gridService, publisher,
-            ChargeSamples.PROPERTIES, solax, flag, outages, new OutageLane(), plan, clock);
+            ChargeSamples.PROPERTIES, solax, flag, outages, new OutageLane(), plan, reserve, clock);
         watch = new ChargeWatch(repository, commands, service, ChargeSamples.PROPERTIES, flag, clock);
         when(registry.current()).thenReturn(Optional.of(List.of(SolaxSamples.solax("192.0.2.1"))));
         when(registry.of(InverterBrand.SOLAX)).thenReturn(Optional.of(SolaxSamples.solax("192.0.2.1")));
@@ -65,6 +72,12 @@ final class ChargeFixture {
         grid(300.0);
         when(client.setSelfUse(any())).thenReturn(Mono.just("r-1"));
         when(publisher.publishInfo(anyString())).thenReturn(Mono.empty());
+        when(publisher.publishAlert(anyString())).thenReturn(Mono.empty());
+        when(reserves.findById(EnergyReserveEntity.ROW_ID)).thenAnswer(call -> Mono.justOrEmpty(reserveRow.get()));
+        when(reserves.save(any())).thenAnswer(call -> {
+            reserveRow.set(call.getArgument(0));
+            return Mono.just(reserveRow.get());
+        });
         when(outages.setSkipAutomation(any(), anyBoolean())).thenReturn(Mono.just(1));
         when(repository.save(any())).thenAnswer(call -> {
             final BatteryChargeRunEntity row = call.getArgument(0);

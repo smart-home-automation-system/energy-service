@@ -30,11 +30,12 @@ import java.util.Optional;
 //The charge of the SOLAX battery from the grid on demand (HAS-336). Every change runs in the lane of InverterCommands, so
 //a request and the pass of the watch never change a run at once.
 //A start: the target and the source checked, no other run open or being ended (CHARGE_IN_PROGRESS), a write allowed
-//(WRITE_TOO_SOON), the SOLAX of the registry, its SOC known and fresh (INVERTER_UNAVAILABLE) and below the target
+//(WRITE_TOO_SOON), the target not below the battery reserve while it holds (INVALID_CHARGE, HAS-494), the SOLAX of the
+//registry, its SOC known and fresh (INVERTER_UNAVAILABLE) and below the target
 //(TARGET_REACHED); the run stored, then the command sent - its request id stored, the delivery left to ChargeWatch. A
 //command the cloud refuses ends the run as failed (DEVICE_FAILED) - the inverter took nothing.
-//A cancel ends the open run and sets the baseline of Self Use back; a baseline the cloud refuses is tried again by the
-//watch. The end of a run is told once its baseline was set back
+//A cancel ends the open run and sets the standing Self Use back - the baseline, or the battery reserve while it holds
+//(HAS-494); one the cloud refuses is tried again by the watch. The end of a run is told once it was set back
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -55,6 +56,7 @@ public class ChargeService {
     private final PlannedOutageRepository plannedOutageRepository;
     private final OutageLane outageLane;
     private final AutomationPlan automationPlan;
+    private final ReserveService reserveService;
     private final Clock clock;
 
     private LocalDateTime now() {
@@ -83,12 +85,19 @@ public class ChargeService {
             .then(Mono.fromSupplier(commands::writable))
             .filter(allowed -> allowed)
             .switchIfEmpty(Mono.error(EnergyException::writeTooSoon))
-            .then(Mono.fromSupplier(commands::serial))
-            .flatMap(serial -> soc().flatMap(soc -> begin(serial, soc, target, until, source, plannedOutageId))));
+            .then(reserveService.standing())
+            .flatMap(base -> Mono.justOrEmpty(base.reserveLevel())
+                .filter(level -> target < level)
+                .flatMap(level -> Mono.<SelfUseBase>error(EnergyException.invalidCharge(
+                    "targetSoc must not be below the battery reserve of " + level + " %")))
+                .defaultIfEmpty(base))
+            .flatMap(base -> Mono.fromCallable(commands::serial)
+                .flatMap(serial -> soc().flatMap(soc -> begin(serial, base, soc, target, until, source,
+                    plannedOutageId)))));
     }
 
-    private Mono<BatteryChargeRunEntity> begin(final String serial, final double soc, final int target,
-                                               final LocalDateTime until, final String source,
+    private Mono<BatteryChargeRunEntity> begin(final String serial, final SelfUseBase base, final double soc,
+                                               final int target, final LocalDateTime until, final String source,
                                                final Long plannedOutageId) {
         final LocalDateTime now = now();
         return Mono.just(soc)
@@ -97,7 +106,7 @@ public class ChargeService {
             .map(below -> ChargeRules.window(now, soc, target, until, solaxProperties.batteryCapacity(), properties))
             .flatMap(window -> repository.save(new BatteryChargeRunEntity(null, now, source, target, window.start(),
                     window.end(), null, null, null, soc, null, null, null, null, null, null, plannedOutageId))
-                .flatMap(run -> commands.charge(serial, target, window.start(), window.end())
+                .flatMap(run -> commands.charge(serial, base, target, window.start(), window.end())
                     .flatMap(requestId -> repository.save(run.withRequestId(requestId)))
                     .doOnNext(sent -> {
                         watchFlag.raise();
@@ -145,12 +154,14 @@ public class ChargeService {
             }));
     }
 
-    //the baseline of Self Use set back after a run, the end told; a baseline the cloud refused stays due and is tried
-    //again by the watch
+    //the standing Self Use set back after a run - the baseline, or the battery reserve while it holds (HAS-494) - and
+    //the end told; a standing Self Use the cloud refused stays due and is tried again by the watch
     Mono<BatteryChargeRunEntity> restore(final BatteryChargeRunEntity run) {
         return Mono.fromCallable(commands::serial)
-            .flatMap(commands::restore)
-            .flatMap(requestId -> repository.save(run.withRestoreRequestId(requestId).withRestoredAt(now())))
+            .zipWith(reserveService.standing())
+            .flatMap(both -> commands.restore(both.getT1(), both.getT2()))
+            .flatMap(requestId -> repository.save(run.withRestoreRequestId(requestId).withRestoredAt(now()))
+                .flatMap(restored -> reserveService.writtenByCharge(requestId).thenReturn(restored)))
             .flatMap(restored -> tell(ChargeMessages.ended(restored)).thenReturn(restored))
             .doOnNext(restored -> log.info("Battery charge {} ended ({}), the baseline of Self Use set back, command {}",
                 restored.id(), restored.endedBy(), restored.restoreRequestId()))

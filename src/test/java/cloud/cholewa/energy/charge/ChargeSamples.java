@@ -1,6 +1,7 @@
 package cloud.cholewa.energy.charge;
 
 import cloud.cholewa.energy.database.BatteryChargeRunEntity;
+import cloud.cholewa.energy.database.EnergyReserveEntity;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -28,5 +29,16 @@ final class ChargeSamples {
 
     static BatteryChargeRunEntity charging() {
         return requested().withDeliveryStatus(4).withDeliveredAt(NOW.plusSeconds(20));
+    }
+
+    //the row of V16 as the migration inserts it: off, 80 %, never written by the service
+    static EnergyReserveEntity reserveNeverWritten() {
+        return new EnergyReserveEntity(EnergyReserveEntity.ROW_ID, false, 80, null, null, "none", null, null);
+    }
+
+    //a reserve of 80 % switched on and taken by the inverter
+    static EnergyReserveEntity reserveHeld() {
+        return reserveNeverWritten().withEnabled(true).withUpdatedAt(NOW.minusHours(1)).withWriteOutcome("taken")
+            .withWriteRequestId("r-0").withWriteAttemptedAt(NOW.minusHours(1));
     }
 }

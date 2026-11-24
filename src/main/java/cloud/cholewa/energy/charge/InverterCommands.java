@@ -73,15 +73,20 @@ public class InverterCommands {
             .orElseThrow(() -> EnergyException.inverterNotFound("solax"));
     }
 
-    //the charge of a run: the request id of the command
-    Mono<String> charge(final String serial, final int targetSoc, final LocalDateTime start, final LocalDateTime end) {
-        return write(() -> client.setSelfUse(SelfUseCommand.charge(jsonMapper, serial, properties.baseline(), targetSoc,
-            start, end)));
+    //the standing Self Use of a reserve at the level, or the baseline without one (HAS-494)
+    SelfUseBase base(final Integer reserve) {
+        return new SelfUseBase(properties.baseline(), reserve);
     }
 
-    //the baseline of Self Use: the request id of the command
-    Mono<String> restore(final String serial) {
-        return write(() -> client.setSelfUse(SelfUseCommand.baseline(jsonMapper, serial, properties.baseline())));
+    //the charge of a run, on the floor of the standing base: the request id of the command
+    Mono<String> charge(final String serial, final SelfUseBase base, final int targetSoc, final LocalDateTime start,
+                        final LocalDateTime end) {
+        return write(() -> client.setSelfUse(SelfUseCommand.charge(jsonMapper, serial, base, targetSoc, start, end)));
+    }
+
+    //the standing Self Use - the baseline or the battery reserve: the request id of the command
+    Mono<String> restore(final String serial, final SelfUseBase base) {
+        return write(() -> client.setSelfUse(SelfUseCommand.standing(jsonMapper, serial, base)));
     }
 
     //the status of a command for the SOLAX, empty while the cloud has none

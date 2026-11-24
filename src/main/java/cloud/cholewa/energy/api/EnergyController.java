@@ -8,6 +8,8 @@ import cloud.cholewa.energy.api.model.BatteryReply;
 import cloud.cholewa.energy.api.model.ChargeReply;
 import cloud.cholewa.energy.api.model.ChargeRequest;
 import cloud.cholewa.energy.api.model.ChargeRunReply;
+import cloud.cholewa.energy.api.model.ReserveReply;
+import cloud.cholewa.energy.api.model.ReserveRequest;
 import cloud.cholewa.energy.api.model.DayReply;
 import cloud.cholewa.energy.api.model.FlowsReply;
 import cloud.cholewa.energy.api.model.ForecastReply;
@@ -20,6 +22,7 @@ import cloud.cholewa.energy.api.model.PlannedOutageReply;
 import cloud.cholewa.energy.api.model.StatusReply;
 import cloud.cholewa.energy.automation.AutomationService;
 import cloud.cholewa.energy.charge.ChargeService;
+import cloud.cholewa.energy.charge.ReserveService;
 import cloud.cholewa.energy.days.DaysService;
 import cloud.cholewa.energy.elicznik.ElicznikFetch;
 import cloud.cholewa.energy.elicznik.ElicznikService;
@@ -69,6 +72,7 @@ public class EnergyController {
     private final PlannedOutageService plannedOutageService;
     private final ChargeService chargeService;
     private final AutomationService automationService;
+    private final ReserveService reserveService;
     private final ForecastService forecastService;
     private final ElicznikService elicznikService;
     private final ElicznikFetch elicznikFetch;
@@ -133,6 +137,17 @@ public class EnergyController {
     @PutMapping("automation")
     Mono<AutomationReply> replaceAutomation(@RequestBody final AutomationRequest request) {
         return automationService.replace(request);
+    }
+
+    //the battery reserve held by the Self Use floor of the SOLAX and what became of its last write (HAS-494)
+    @GetMapping("battery/reserve")
+    Mono<ReserveReply> reserve() {
+        return reserveService.settings();
+    }
+
+    @PutMapping("battery/reserve")
+    Mono<ReserveReply> replaceReserve(@RequestBody final ReserveRequest request) {
+        return reserveService.replace(request);
     }
 
     //the alarms that last, newest first - the open alarms of the dashboard (HAS-341)

@@ -54,7 +54,10 @@ public enum EnergyError implements ErrorId {
     FETCH_TOO_SOON("Fetch too soon"),
 
     //the eLicznik portal did not answer, refused the login or answered something else (HAS-340)
-    ELICZNIK_UNAVAILABLE("eLicznik unavailable");
+    ELICZNIK_UNAVAILABLE("eLicznik unavailable"),
+
+    //settings of the battery reserve outside their bounds, or missing (HAS-494)
+    INVALID_RESERVE("Invalid reserve");
 
     private final String description;
 }

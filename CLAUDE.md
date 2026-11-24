@@ -29,16 +29,17 @@ eLicznik portal (HAS-340), and reviews them in IntelliJ.
   `www.tauron-dystrybucja.pl`, no login). The forecast API of Open-Meteo (HAS-371, `api.open-meteo.com`, no key). The
   eLicznik portal of Tauron Dystrybucja (HAS-340, `logowanie.tauron-dystrybucja.pl` and `elicznik.tauron-dystrybucja.pl`,
   the login of the owner - no official API).
-- Writes: the Self Use work mode of the SOLAX through the SolaX cloud - a charge from the grid and the baseline after it
+- Writes: the Self Use work mode of the SOLAX through the SolaX cloud - a charge from the grid, the standing Self Use
+  after it (the baseline or the battery reserve, HAS-494) and the reserve itself
   (HAS-336), at most one command a minute.
 - Publishes: the alerts, reminders and infos of the outages of the grid to the exchange `notification` of
   `/notification` (user `notification`, `notification-rabbitmq-password`; HAS-334) - the loss, a low battery and
   the return marked for an SMS; the silence of the SOLAX dongle and the grid meter and the overload of a phase
   (HAS-332), Discord only; the alarms of the SOLAX from the SolaX cloud (HAS-329); the faults of the SOFAR (HAS-330); an inverter that does not produce in the sun (HAS-333); the planned outages of Tauron (HAS-337) - those of the
   street of the house and their reminders by SMS; the daily energy summary (HAS-339), an info at 21:30.
-- Uses libraries: `cholewa-commons` 1.14.0 since HAS-340 (the pooled `ConnectionFactory`, the required
+- Uses libraries: `cholewa-commons` 2.0.0 since HAS-494 (Boot 4.2.0, `spring-boot-starter-rabbitmq`; 1.14.0 since HAS-340) (the pooled `ConnectionFactory`, the required
   properties, the scheduler pool and `ScheduledPass`, the error contract, `NotificationConnection` and the
-  `...Sms` methods of `NotificationPublisher` - HAS-334), `smart-home-sdk` 1.21.0 since HAS-435 (a no-op bump - the registry is read by
+  `...Sms` methods of `NotificationPublisher` - HAS-334), `smart-home-sdk` 1.25.0 since HAS-494 (a no-op bump - the registry is read by
   `?kind=inverter`; the kind `inverter` and `InverterBinding`, HAS-326),
   `shelly-client` 2.7.0 since HAS-340 **with its beans on** (`ShellyRpcClient`, `ShellyGen1Client`,
   `ShellyMqttDecoder`; pinned by `EnergyServiceApplicationTest`) - 2.3.0 brought `EmStatus`, `EmDataStatus`
@@ -56,7 +57,8 @@ eLicznik portal (HAS-340), and reviews them in IntelliJ.
   local run (the recipe of water-service: PostgreSQL with `-c ssl=on` and the snakeoil
   certificate, `MSYS_NO_PATHCONV=1` in Git Bash; V1 was run that way, as a user granted
   `USAGE, CREATE` on `public` only).
-- Spring Boot 4.1.2, logbook 4.2.0; own libraries on the latest releases, as the org rule asks of
+- Spring Boot 4.2.0 since HAS-494 (`spring-boot-starter-rabbitmq` in place of `spring-boot-starter-amqp`; the host and port of the second connection from `RabbitConnectionDetails`), the plugins of Maven by the Boot parent except tidy, logbook
+  4.2.0; own libraries on the latest releases, as the org rule asks of
   every service task.
 - **Imports, never a fully qualified class name in code** (owner, 2026-11-12; HAS-435 removed the last ones): a class
   of another package is imported, also in tests - no `org.springframework.http.MediaType.APPLICATION_JSON`,
@@ -91,8 +93,9 @@ eLicznik portal (HAS-340), and reviews them in IntelliJ.
   the listener with manual ack, prefetch 3 and observation (`EnergyServiceApplicationTest`). The notifications
   go over a second connection that is **not a bean** (`NotificationConnection` of `cholewa-commons`, built by
   `NotificationRabbitConfig` - since HAS-334): a `ConnectionFactory` bean would switch off the auto-configured one
-  with its listener settings. `NotificationRabbitConfig` / `NotificationConnectionProperties` are the sixth copy
-  (heating, blinds, weather, light, amx) - kept as copies by the owner's choice; a change goes into every copy.
+  with its listener settings. `NotificationRabbitConfig` / `NotificationConnectionProperties` are one of the nine copies
+  (heating, blinds, weather, light, amx, water, gate, safety and this one) - kept as copies by the owner's choice; a change goes into every copy. Since HAS-494
+  (Boot 4.2.0) this copy takes the host and port from `RabbitConnectionDetails`; the others follow with their move to 4.2.0.
 - **The grid meter** (HAS-327, package `meter`):
   - Known by `energy.meter.device-id` and `energy.meter.address` from the manifest, **not by the registry**:
     the Pro 3EM is there already as the BTHome gateway 79 of the garage gate sensors, and one device is one
@@ -400,6 +403,36 @@ eLicznik portal (HAS-340), and reviews them in IntelliJ.
     the settings answered off / 100 % / 5 kW / 60 min, a change taken and one out of bounds refused, a skip of an unknown
     outage 404. The dry run of the DoD is `AutomationWatchTest`: a fake outage, the stubbed cloud, the clock at the planned
     start - the command sent once.
+- **The battery reserve** (HAS-494, epic HAS-493, package `charge`) - what is easy to break:
+  - **The reserve is the floor of Self Use, not the Back Up mode** (owner, 2026-11-24): `minSoc` and `chargeUpperSoc` at
+    the level, `chargeFromGridEnable` 1, the charge window 00:00 - 23:59, the discharge window of the baseline, period 2
+    off (`SelfUseCommand.standing`, pinned whole). While the grid is present the house never takes the battery below the
+    level and the grid tops it up to the level; the panels charge it above (Self Use puts the surplus into the battery).
+    In EPS the inverter uses its own EPS Min SOC, which the API does not write - read it in SolaxCloud. Back Up
+    (`batch_set_peace_mode`, the same fields) is not used: its behaviour with the grid present is documented nowhere
+    (searched 2026-11-24).
+  - **`SelfUseBase` is the standing Self Use**: the baseline of the owner, or the reserve while it holds
+    (`ReserveRules.inForce` - switched on and its `until` not reached). Every write of the service that is not a charge
+    writes it: **the end of every charge sets the reserve back, not the baseline**, and a charge keeps its floor
+    (`minSoc` of the base). A charge to a target below the reserve is `INVALID_CHARGE` - the inverter would hold the
+    floor above the target.
+  - `energy_reserve` (V16): one row the migration inserts (off, 80 %, `none`) - a database without it is a failed read,
+    never a default. The API reads none of the settings of the inverter, so **the row is the truth and nothing is written
+    at a pod start**: `write_outcome` `none` (never written by the service - the inverter runs what the owner set) is not
+    due; `pending` is written, `failed` again after `ReserveRules.RETRY_AFTER` (10 min); `sent` is followed as a charge
+    is - `requestStatus` within `delivery-timeout`, 4 `taken`, 1 / 2 / 5 / 6 `failed`; after the timeout it stays `sent`
+    (the cloud refuses the result to the application of the owner, 10403 - one WARN an hour).
+  - **One lane with the charges**: `PUT /battery/reserve`, `ReserveWatch` (a pass a minute, bounded at 50 s) and the
+    end of a charge run in `InverterCommands.serially`; at most one write a minute counts the reserve too. A change while
+    a charge is open or being ended is stored as `pending` and written by the end of the run (`ReserveService.writtenByCharge`);
+    a change within the minute of the last write waits for the next pass. A registry not read yet leaves it `pending`;
+    no SOLAX with a serial number in it is a failed write. Only the command decides a failure: a database failure after a
+    sent command reaches the pass, so a command the inverter took is never told as not written.
+  - The notices (Discord, never SMS): a write not taken - one alert, then quiet while it is retried; written again -
+    one info; a reserve set `until` a time ended - one info, the baseline written.
+  - **The first real write is run with the owner watching SolaxCloud** (the DoD): what the remote settings show, the
+    charge from the grid to the level and its stop, the house then on the grid, the baseline after switching off - and
+    on a sunny day the top-up above the reserve and its use back down to it - go into this section.
 - **The planned outages of Tauron** (HAS-337, package `tauron`) - what is easy to break:
   - **The API** (the one of the Home Assistant integration Eales/tauron-dystrybucja, checked 2026-11-03): `cities?partName=`,
     `streets?partName=&ownerGAID=<the GAID of the town>` (not its OwnerGAID - that answers an empty list), `outages/address`
