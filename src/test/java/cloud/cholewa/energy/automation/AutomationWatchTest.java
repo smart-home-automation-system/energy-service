@@ -5,6 +5,7 @@ import cloud.cholewa.energy.database.BatteryChargeRunEntity;
 import cloud.cholewa.energy.database.EnergyAutomationEntity;
 import cloud.cholewa.energy.database.EnergyAutomationRepository;
 import cloud.cholewa.energy.database.PlannedOutageEntity;
+import cloud.cholewa.energy.frequency.FrequencyState;
 import cloud.cholewa.energy.solax.SolaxProperties;
 import cloud.cholewa.energy.solaxcloud.SolaxCloudException;
 import org.junit.jupiter.api.BeforeEach;
@@ -38,9 +39,10 @@ class AutomationWatchTest {
     private final ChargeTestKit kit = new ChargeTestKit();
     private final EnergyAutomationRepository settings = mock(EnergyAutomationRepository.class);
     private final AutomationPlan plan = kit.plan();
+    private final FrequencyState frequencyState = mock(FrequencyState.class);
     private final AutomationWatch watch = new AutomationWatch(new AutomationService(settings, kit.clock()), kit.outages(),
         kit.repository(), kit.service(), plan, kit.publisher(), kit.outageLane(),
-        new SolaxProperties(Duration.ofSeconds(15), Duration.ofMinutes(1), 26.5), kit.clock());
+        new SolaxProperties(Duration.ofSeconds(15), Duration.ofMinutes(1), 26.5), frequencyState, kit.clock());
 
     @BeforeEach
     void setUp() {
@@ -87,6 +89,26 @@ class AutomationWatchTest {
         verify(kit.outages()).setChargeRun(3L, run.id());
         verify(kit.publisher()).publishInfoSms("Battery charging from the grid started before the planned outage of"
             + " Tue 3 Nov 20:00-23:00: SOC 45 % to 100 %.");
+    }
+
+    //the grid frequency off its band (HAS-503 - a generator): the inverter does not connect, so the start waits for it
+    //and comes once the frequency is back, before the outage
+    @Test
+    void should_wait_with_the_start_while_the_grid_frequency_is_off() {
+        when(frequencyState.off()).thenReturn(true);
+        kit.moveTo(LocalDateTime.of(2026, 11, 3, 16, 5));
+        pass();
+        kit.moveTo(LocalDateTime.of(2026, 11, 3, 16, 6));
+        pass();
+        verify(kit.client(), never()).setSelfUse(any());
+        verify(kit.publisher(), never()).publishAlert(anyString());
+
+        when(frequencyState.off()).thenReturn(false);
+        kit.moveTo(LocalDateTime.of(2026, 11, 3, 17, 0));
+        pass();
+
+        verify(kit.client(), times(1)).setSelfUse(any());
+        assertThat(kit.only().plannedOutageId()).isEqualTo(3L);
     }
 
     //a window never started twice for one outage - a run that ended, cancelled or failed, included

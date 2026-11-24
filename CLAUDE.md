@@ -13,7 +13,8 @@ SOLAX (HAS-328), the outages of the grid (HAS-334), the monitor of the sources (
 the SOFAR (HAS-330), the balance, history and days (HAS-331), the production watch (HAS-333), the planned outages of
 Tauron (HAS-337), the charge of the battery (HAS-336) and its automation before an outage (HAS-338), the daily energy
 summary (HAS-339), the irradiance forecast (HAS-371) and its judgement and calibration (HAS-372), the readings of the
-eLicznik portal (HAS-340), and reviews them in IntelliJ.
+eLicznik portal (HAS-340), the battery reserve (HAS-494) and the grid frequency alert (HAS-503), and reviews them in
+IntelliJ.
 
 ## Role in the system
 
@@ -36,7 +37,8 @@ eLicznik portal (HAS-340), and reviews them in IntelliJ.
   `/notification` (user `notification`, `notification-rabbitmq-password`; HAS-334) - the loss, a low battery and
   the return marked for an SMS; the silence of the SOLAX dongle and the grid meter and the overload of a phase
   (HAS-332), Discord only; the alarms of the SOLAX from the SolaX cloud (HAS-329); the faults of the SOFAR (HAS-330); an inverter that does not produce in the sun (HAS-333); the planned outages of Tauron (HAS-337) - those of the
-  street of the house and their reminders by SMS; the daily energy summary (HAS-339), an info at 21:30.
+  street of the house and their reminders by SMS; the daily energy summary (HAS-339), an info at 21:30; the grid
+  frequency off its band (HAS-503), Discord only.
 - Uses libraries: `cholewa-commons` 2.0.0 since HAS-494 (Boot 4.2.0, `spring-boot-starter-rabbitmq`; 1.14.0 since HAS-340) (the pooled `ConnectionFactory`, the required
   properties, the scheduler pool and `ScheduledPass`, the error contract, `NotificationConnection` and the
   `...Sms` methods of `NotificationPublisher` - HAS-334), `smart-home-sdk` 1.25.0 since HAS-494 (a no-op bump - the registry is read by
@@ -546,6 +548,32 @@ eLicznik portal (HAS-340), and reviews them in IntelliJ.
   - **Rehearsed** (2026-11-04): the released 0.15.0 image applied V1-V13 on a throwaway PostgreSQL with SSL, the new jar V14
     and fetched the real Open-Meteo: `GET /home/energy/forecast` answered seven days (44 kWh on the clear 5th at 0.8, 6 - 11
     on the cloudy days), 47 hours, the initial ratios, no category (no closed day in that database).
+- **The grid frequency off its band** (HAS-503, package `frequency`) - what is easy to break:
+  - **Why**: on 2026-11-24 Tauron fed the town from generators during a planned outage (seen on site by the owner); the
+    house ran on 51.0 Hz all day while the continental grid held 50.01 Hz (Swissgrid), both inverters refused to connect
+    (SOLAX run mode `waiting`, SOFAR `Recoverable Fault`), no charge from the grid ran - manual, the reserve or the
+    inverter's own Back Up - and the outage watch saw the grid present: it judges the voltages only (they were normal).
+    The switch to the generator was a few minutes without power between 07:00 and 08:00; two nodes of the cluster lost
+    power with the house, so that outage was not stored (the known limit of HAS-334).
+  - **The grid meter decides** (`FrequencyRules`, pure, pinned by `FrequencyRulesTest`): the frequency of its phase
+    furthest from 50 Hz, as `GET /grid` answers it - the state in memory, so a stale meter (no reading for PT2M or off the
+    broker) is not known and never decides: the counts start anew, an open episode stays open. The SOLAX frequency (word 6)
+    is the second witness in the words only - it never opens nor closes an episode. Off - outside `energy.frequency.low` /
+    `high` (49.8 / 50.2 Hz, the edges inside) - for `off-after` (PT2M) opens one, opened at the first off pass; inside for
+    `back-after` (PT5M) closes it at the first pass back.
+  - **The likely cause** is read only while the frequency is off: the planned outages of `planned_outage` going on now
+    (town or street, planned or a failure) name a generator of Tauron; none - "a generator or a fault of the grid".
+  - `FrequencyWatch` every 30 s, bounded at 25 s. **The table follows the broker** (as the production watch): a row only
+    once its notice was published; a notice not published keeps the memory it was decided on, so the next pass decides it
+    again (an info with its time back and the range); a told row the database did not take is held and stored first by
+    the next pass, which decides nothing until it is (never told twice; the /code-review of HAS-503). The counts, the
+    range seen and that row are in memory - after a restart the
+    range covers the passes since ("the range not known" when none). `source_alert` kind `frequency`, source `meter` (V17,
+    beside a silent meter: the unique index is a source and a kind). Notices on the technical channel, never SMS.
+  - `FrequencyState` holds the last reading (not the episode): `GET /status` answers `grid.frequency` (left out while not
+    known) and `grid.frequencyOff` (`null` while not known); `AutomationWatch` holds the start of a charge before a planned
+    outage while it is off (logged once an outage) - the inverter would not connect - and starts once it is back.
+  - Proven by a real event only (owner rule): the next generator of Tauron; the words are approved on that message.
 - **The eLicznik portal of Tauron** (HAS-340, package `elicznik`) - what is easy to break, and what to do when it breaks:
   - **There is no official API.** The requests are those of the Python `elicznik` scraper (mlesniew) and the Tauron AMIplus
     integration of Home Assistant (PiotrMachowski), both fixed for the move of the login of Tauron to Keycloak in June

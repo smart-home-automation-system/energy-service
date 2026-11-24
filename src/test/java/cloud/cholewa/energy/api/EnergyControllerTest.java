@@ -323,7 +323,7 @@ class EnergyControllerTest {
     }
 
     //a source not known is reachable null, written out - never false; its last reading is left out. The grid as the
-    //SOLAX sees it next to the sources (HAS-334)
+    //SOLAX sees it next to the sources (HAS-334), with the frequency of the grid meter (HAS-503)
     @Test
     void should_answer_every_source_with_whether_it_answers() {
         when(energyStatusService.reply()).thenReturn(Mono.just(new StatusReply(List.of(
@@ -331,7 +331,7 @@ class EnergyControllerTest {
             new SourceStatusReply("solax", false, null),
             new SourceStatusReply("sofar", null, null),
             new SourceStatusReply("solaxCloud", null, null)
-        ), new GridStateReply("lost", LocalDateTime.of(2026, 10, 31, 19, 42)))));
+        ), new GridStateReply("lost", LocalDateTime.of(2026, 10, 31, 19, 42)).withFrequency(51.0, true))));
 
         webTestClient.get().uri("/status")
             .exchange()
@@ -344,11 +344,12 @@ class EnergyControllerTest {
                     {"source": "sofar", "reachable": null},
                     {"source": "solaxCloud", "reachable": null}
                   ],
-                  "grid": {"state": "lost", "since": "2026-10-31T19:42:00"}
+                  "grid": {"state": "lost", "since": "2026-10-31T19:42:00", "frequency": 51.0, "frequencyOff": true}
                 }""", JsonCompareMode.STRICT);
     }
 
-    //after a start, before two reads of the SOLAX agree: written out as null, never read as present
+    //after a start, before two reads of the SOLAX agree: written out as null, never read as present; the frequency not
+    //known is left out and frequencyOff written out as null (HAS-503)
     @Test
     void should_answer_a_grid_not_known_as_null() {
         when(energyStatusService.reply()).thenReturn(Mono.just(new StatusReply(List.of(),
@@ -358,7 +359,7 @@ class EnergyControllerTest {
             .exchange()
             .expectStatus().isOk()
             .expectBody().json("""
-                {"sources": [], "grid": {"state": null}}""", JsonCompareMode.STRICT);
+                {"sources": [], "grid": {"state": null, "frequencyOff": null}}""", JsonCompareMode.STRICT);
     }
 
     //HAS-334: the outages of a range, one still open - its end left out

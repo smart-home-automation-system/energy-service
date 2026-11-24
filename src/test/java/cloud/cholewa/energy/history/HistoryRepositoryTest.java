@@ -245,6 +245,25 @@ class HistoryRepositoryTest {
         execute("DELETE FROM source_alert");
     }
 
+    //V17 (HAS-503): the grid meter may have an open frequency episode, without a detail, beside a silent one; an
+    //inverter may not
+    @Test
+    void should_take_a_frequency_episode_of_the_meter_only() {
+        execute("DELETE FROM source_alert");
+        databaseClient.sql("INSERT INTO source_alert (source, kind, opened_at) VALUES ('meter', 'frequency', now())")
+            .fetch().rowsUpdated().as(StepVerifier::create).expectNext(1L).verifyComplete();
+        databaseClient.sql("INSERT INTO source_alert (source, kind, opened_at) VALUES ('meter', 'silent', now())")
+            .fetch().rowsUpdated().as(StepVerifier::create).expectNext(1L).verifyComplete();
+        databaseClient.sql("INSERT INTO source_alert (source, kind, opened_at) VALUES ('solax', 'frequency', now())")
+            .fetch().rowsUpdated().as(StepVerifier::create).expectError().verify();
+        databaseClient.sql("INSERT INTO source_alert (source, kind, opened_at, detail) VALUES ('meter', 'frequency', "
+                + "now(), 'x')")
+            .fetch().rowsUpdated().as(StepVerifier::create).expectError().verify();
+        databaseClient.sql("INSERT INTO source_alert (source, kind, opened_at) VALUES ('meter', 'frequency', now())")
+            .fetch().rowsUpdated().as(StepVerifier::create).expectError().verify();
+        execute("DELETE FROM source_alert");
+    }
+
     @Test
     void should_store_a_day_once() {
         final EnergyDayEntity day = new EnergyDayEntity(LocalDate.of(2026, 11, 1), 4.0, 1.0, 5.0, 11.2, 0.0, 1.0,

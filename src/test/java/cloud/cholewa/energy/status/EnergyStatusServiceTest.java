@@ -1,7 +1,9 @@
 package cloud.cholewa.energy.status;
 
+import cloud.cholewa.energy.api.model.GridStateReply;
 import cloud.cholewa.energy.api.model.SourceStatusReply;
 import cloud.cholewa.energy.meter.GridMeterTracker;
+import cloud.cholewa.energy.frequency.FrequencyState;
 import cloud.cholewa.energy.meter.GridMeterState;
 import cloud.cholewa.energy.outage.GridOutageService;
 import cloud.cholewa.energy.solax.SolaxSamples;
@@ -31,14 +33,29 @@ class EnergyStatusServiceTest {
     private final SolaxTracker solaxTracker = mock(SolaxTracker.class);
     private final SolaxCloudTracker cloudTracker = mock(SolaxCloudTracker.class);
     private final SofarTracker sofarTracker = mock(SofarTracker.class);
+    private final GridOutageService gridOutageService = mock(GridOutageService.class);
+    private final FrequencyState frequencyState = mock(FrequencyState.class);
     private final EnergyStatusService energyStatusService = new EnergyStatusService(tracker, solaxTracker,
-        cloudTracker, sofarTracker, mock(GridOutageService.class));
+        cloudTracker, sofarTracker, gridOutageService, frequencyState);
 
     @BeforeEach
     void setUp() {
         when(solaxTracker.current()).thenReturn(new SolaxState(null, null, null, null));
         when(cloudTracker.current()).thenReturn(new SolaxCloudState(null, null, null, null));
         when(sofarTracker.current()).thenReturn(new SofarState(null, null, null, null));
+    }
+
+    //the grid of the outage watch with the frequency of the last pass of the frequency watch (HAS-503)
+    @Test
+    void should_answer_the_grid_with_its_frequency() {
+        when(tracker.current()).thenReturn(new GridMeterState(null, null, null, null, null, null));
+        when(gridOutageService.grid()).thenReturn(new GridStateReply("present", null));
+        when(frequencyState.current()).thenReturn(new FrequencyState.Snapshot(51.0, true));
+
+        energyStatusService.reply()
+            .as(StepVerifier::create)
+            .assertNext(reply -> assertThat(reply.grid()).isEqualTo(new GridStateReply("present", null, 51.0, true)))
+            .verifyComplete();
     }
 
     //after a start nothing is known: every source is there, in the order of the dashboard, and none is known
