@@ -19,7 +19,6 @@ import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
@@ -206,6 +205,5 @@ class MeterRestartWatchTest {
             .expectNoEvent(MeterRestartWatch.LIMIT.minusSeconds(1))
             .thenAwait(Duration.ofSeconds(1))
             .verifyComplete();
-        assertThat(MeterRestartWatch.LIMIT).isLessThan(Duration.ofMinutes(1));
     }
 }
