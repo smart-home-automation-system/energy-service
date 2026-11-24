@@ -17,8 +17,9 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
 //A row of grid_reading a minute (HAS-327), only when a value changed since the last row written - a meter that
-//fell silent writes nothing more. Nothing is written before the first readings. The last row is remembered in
-//memory: after a start the first snapshot is written whatever the database holds. A failed write is a WARN and is
+//fell silent writes nothing more. The currents and the frequency (GridFrequency) since V18 (HAS-506): the powers move
+//every minute, so a frequency that moves by 0.01 Hz makes no row of its own and needs no dead band. Nothing is written
+//before the first readings. The last row is remembered in memory: after a start the first snapshot is written whatever the database holds. A failed write is a WARN and is
 //tried again with the next minute. The pass holds one connection for one insert, never while a device is asked
 @Slf4j
 @Component
@@ -52,7 +53,9 @@ public class GridSnapshot {
                 readings.getaActPower(), readings.getbActPower(), readings.getcActPower(), readings.getTotalActPower(),
                 counters == null ? null : kwh(counters.getTotalAct()),
                 counters == null ? null : kwh(counters.getTotalActRet()),
-                readings.getaVoltage(), readings.getbVoltage(), readings.getcVoltage());
+                readings.getaVoltage(), readings.getbVoltage(), readings.getcVoltage(),
+                readings.getaCurrent(), readings.getbCurrent(), readings.getcCurrent(),
+                GridFrequency.furthestFromNominal(readings.getaFreq(), readings.getbFreq(), readings.getcFreq()));
         });
     }
 
@@ -69,6 +72,8 @@ public class GridSnapshot {
             && Objects.equals(row.importEnergy(), last.importEnergy())
             && Objects.equals(row.exportEnergy(), last.exportEnergy())
             && Objects.equals(row.aVoltage(), last.aVoltage()) && Objects.equals(row.bVoltage(), last.bVoltage())
-            && Objects.equals(row.cVoltage(), last.cVoltage());
+            && Objects.equals(row.cVoltage(), last.cVoltage())
+            && Objects.equals(row.aCurrent(), last.aCurrent()) && Objects.equals(row.bCurrent(), last.bCurrent())
+            && Objects.equals(row.cCurrent(), last.cCurrent()) && Objects.equals(row.frequency(), last.frequency());
     }
 }

@@ -8,7 +8,8 @@ import java.time.LocalDateTime;
 
 //A row of grid_reading (V2, HAS-327): the grid meter once a minute, written only when a value changed. The
 //powers are W - signed, negative where the house returns energy to the grid - the energies kWh of the counters of
-//the meter, the voltages V. A value the meter did not send is null. measured_at is the house time the readings
+//the meter, the voltages V, the currents A and the frequency Hz - the phase furthest from 50 Hz (both V18, HAS-506).
+//A value the meter did not send is null. measured_at is the house time the readings
 //arrived at
 @Table("grid_reading")
 public record GridReadingEntity(
@@ -22,6 +23,10 @@ public record GridReadingEntity(
     @Column("export_energy") Double exportEnergy,
     @Column("a_voltage") Double aVoltage,
     @Column("b_voltage") Double bVoltage,
-    @Column("c_voltage") Double cVoltage
+    @Column("c_voltage") Double cVoltage,
+    @Column("a_current") Double aCurrent,
+    @Column("b_current") Double bCurrent,
+    @Column("c_current") Double cCurrent,
+    @Column("frequency") Double frequency
 ) {
 }

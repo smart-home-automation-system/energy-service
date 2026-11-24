@@ -13,7 +13,8 @@ SOLAX (HAS-328), the outages of the grid (HAS-334), the monitor of the sources (
 the SOFAR (HAS-330), the balance, history and days (HAS-331), the production watch (HAS-333), the planned outages of
 Tauron (HAS-337), the charge of the battery (HAS-336) and its automation before an outage (HAS-338), the daily energy
 summary (HAS-339), the irradiance forecast (HAS-371) and its judgement and calibration (HAS-372), the readings of the
-eLicznik portal (HAS-340), the battery reserve (HAS-494) and the grid frequency alert (HAS-503), and reviews them in
+eLicznik portal (HAS-340), the battery reserve (HAS-494), the grid frequency alert (HAS-503) and the history of the voltage, the current and the
+frequency (HAS-506), and reviews them in
 IntelliJ.
 
 ## Role in the system
@@ -114,7 +115,12 @@ IntelliJ.
   - `GridSnapshot` writes `grid_reading` (V2) every minute, **only when a value changed** (the last row in
     memory; after a start the first one is written). The counters are Wh on the meter, kWh in the table and
     the API - a decimal shift (`BigDecimal.movePointLeft`), not a division (891057.42 / 1000 has a binary
-    tail).
+    tail). **The currents and the frequency since V18** (HAS-506): **one frequency, the phase furthest from 50 Hz**
+    (`GridFrequency`, which the frequency alert reads too, decided 2026-11-24: the phases of one
+    grid share their frequency, and the one off the band is what the chart is looked at for), stored as the meter sends it
+    - **no rounding, no dead band**: the powers move every minute, so a row is written every minute anyway and a
+    frequency moving by 0.01 Hz adds none. Their history (`grid-voltage-a|b|c`, `grid-current-a|b|c`, `grid-frequency` of
+    `/history`, pinned by `MetricTest`) starts with the deploy of 0.20.0; the rows before answer no point.
   - `GET /grid` (`GridService`) is the state in memory, never a call to the meter: what was not sent is left
     out, `stale` always written - no readings, older than `energy.meter.stale-after` (PT2M, 30 s - 1 h) or the
     meter off the broker; `direction` by `GridDirection.DEAD_BAND_WATTS` (20 W).
