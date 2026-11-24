@@ -8,6 +8,7 @@ import cloud.cholewa.energy.solaxcloud.SolaxCloudClient;
 import cloud.cholewa.home.model.InverterBrand;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.time.Clock;
@@ -84,9 +85,11 @@ public class InverterCommands {
         return write(() -> client.setSelfUse(SelfUseCommand.charge(jsonMapper, serial, base, targetSoc, start, end)));
     }
 
-    //the standing Self Use - the baseline or the battery reserve: the request id of the command
+    //the standing work mode: the baseline in Self Use, or the battery reserve in Back Up (owner, 2026-11-24 - the floor of
+    //Self Use was not taken, Min SoC stayed 10); the same body for both: the request id of the command
     Mono<String> restore(final String serial, final SelfUseBase base) {
-        return write(() -> client.setSelfUse(SelfUseCommand.standing(jsonMapper, serial, base)));
+        final JsonNode body = SelfUseCommand.standing(jsonMapper, serial, base);
+        return write(() -> base.reserveLevel().isPresent() ? client.setBackUp(body) : client.setSelfUse(body));
     }
 
     //the status of a command for the SOLAX, empty while the cloud has none

@@ -242,6 +242,24 @@ class SolaxCloudClientTest {
         assertThat(request.getBody().utf8()).isEqualTo("{\"snList\":[\"H1234567890ABC\"]}");
     }
 
+    //HAS-494: the battery reserve in the Back Up work mode - the same body, its own path
+    @Test
+    void should_send_the_back_up_work_mode_and_answer_its_request_id() throws InterruptedException {
+        server.enqueue(token("first"));
+        server.enqueue(json("""
+            {"code":10000,"message":"success","result":{"H1234567890ABC":{"status":3}},"requestId":"r-2"}"""));
+
+        client.setBackUp(SolaxSamples.JSON.readTree("{\"snList\":[\"H1234567890ABC\"]}")).as(StepVerifier::create)
+            .expectNext("r-2")
+            .verifyComplete();
+        server.takeRequest();
+        final RecordedRequest request = server.takeRequest();
+        assertThat(request.getMethod()).isEqualTo("POST");
+        assertThat(request.getUrl().encodedPath())
+            .isEqualTo("/openapi/v2/device/inverter_work_mode/batch_set_peace_mode");
+        assertThat(request.getBody().utf8()).isEqualTo("{\"snList\":[\"H1234567890ABC\"]}");
+    }
+
     @Test
     void should_fail_a_work_mode_answered_without_a_request_id() {
         server.enqueue(token("first"));

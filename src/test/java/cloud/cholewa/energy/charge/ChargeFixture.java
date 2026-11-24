@@ -71,6 +71,7 @@ final class ChargeFixture {
         battery(45.0, false);
         grid(300.0);
         when(client.setSelfUse(any())).thenReturn(Mono.just("r-1"));
+        when(client.setBackUp(any())).thenReturn(Mono.just("r-1"));
         when(publisher.publishInfo(anyString())).thenReturn(Mono.empty());
         when(publisher.publishAlert(anyString())).thenReturn(Mono.empty());
         when(reserves.findById(EnergyReserveEntity.ROW_ID)).thenAnswer(call -> Mono.justOrEmpty(reserveRow.get()));

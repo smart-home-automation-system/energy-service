@@ -447,13 +447,16 @@ IntelliJ.
     outage 404. The dry run of the DoD is `AutomationWatchTest`: a fake outage, the stubbed cloud, the clock at the planned
     start - the command sent once.
 - **The battery reserve** (HAS-494, epic HAS-493, package `charge`) - what is easy to break:
-  - **The reserve is the floor of Self Use, not the Back Up mode** (owner, 2026-11-24): `minSoc` and `chargeUpperSoc` at
-    the level, `chargeFromGridEnable` 1, the charge window 00:00 - 23:59, the discharge window of the baseline, period 2
-    off (`SelfUseCommand.standing`, pinned whole). While the grid is present the house never takes the battery below the
-    level and the grid tops it up to the level; the panels charge it above (Self Use puts the surplus into the battery).
-    In EPS the inverter uses its own EPS Min SOC, which the API does not write - read it in SolaxCloud. Back Up
-    (`batch_set_peace_mode`, the same fields) is not used: its behaviour with the grid present is documented nowhere
-    (searched 2026-11-24).
+  - **The reserve is the Back Up work mode** (`batch_set_peace_mode`, owner 2026-11-24 evening): the first real write
+    as the floor of Self Use (23:09) charged the battery from the grid at 5.09 kW, but the remote settings showed **Min SoC
+    10** with "Charge Battery To" 80 - the floor of Self Use is not taken through the API (the same at 20 % that morning),
+    so after the charge the house would have used the battery again. Back Up takes **the same body** (the documentation,
+    read 2026-11-24: `snList`, `businessType`, `minSoc`, `chargeFromGridEnable`, `chargeUpperSoc` required, the windows
+    optional): `minSoc` and `chargeUpperSoc` at the level, `chargeFromGridEnable` 1, the charge window 00:00 - 23:59, the
+    discharge window of the baseline, period 2 off (`SelfUseCommand.standing`, pinned whole). `InverterCommands.restore`
+    sends it as Back Up while a reserve holds, as Self Use for the baseline; a charge of a run stays Self Use and its end
+    sets the reserve back in Back Up. In EPS the inverter uses its own EPS Min SOC, which the API does not write - read it
+    in SolaxCloud.
   - **`SelfUseBase` is the standing Self Use**: the baseline of the owner, or the reserve while it holds
     (`ReserveRules.inForce` - switched on and its `until` not reached). Every write of the service that is not a charge
     writes it: **the end of every charge sets the reserve back, not the baseline**, and a charge keeps its floor

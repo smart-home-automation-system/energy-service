@@ -12,6 +12,7 @@ import tools.jackson.databind.JsonNode;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.endsWith;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -60,15 +61,16 @@ class ChargeReserveTest {
     void should_set_the_reserve_back_at_the_end_of_a_charge() {
         fixture.table.put(1L, ChargeSamples.charging());
         fixture.battery(90.0, false);
-        when(fixture.client.setSelfUse(any())).thenReturn(Mono.just("r-2"));
+        when(fixture.client.setBackUp(any())).thenReturn(Mono.just("r-2"));
 
         fixture.service.cancel().as(StepVerifier::create).expectNextCount(1).verifyComplete();
 
-        verify(fixture.client).setSelfUse(argThat((JsonNode body) -> body.path("minSoc").asInt() == 80
+        verify(fixture.client).setBackUp(argThat((JsonNode body) -> body.path("minSoc").asInt() == 80
             && body.path("chargeUpperSoc").asInt() == 80
             && body.path("chargeEndTimePeriod1").asString().equals("23:59")));
         assertThat(fixture.reserveRow.get().writeOutcome()).isEqualTo("sent");
         assertThat(fixture.reserveRow.get().writeRequestId()).isEqualTo("r-2");
+        verify(fixture.publisher).publishInfo(endsWith("; the inverter set back to the battery reserve of 80 % (Back Up)."));
     }
 
     //a change while a charge runs waits for its end: the watch ends the run at its target and writes the new level
@@ -79,12 +81,12 @@ class ChargeReserveTest {
             .assertNext(reply -> assertThat(reply.writeState()).isEqualTo("pending"))
             .verifyComplete();
         fixture.battery(100.0, false);
-        when(fixture.client.setSelfUse(any())).thenReturn(Mono.just("r-3"));
+        when(fixture.client.setBackUp(any())).thenReturn(Mono.just("r-3"));
 
         fixture.watch.pass().as(StepVerifier::create).verifyComplete();
 
         assertThat(fixture.only().endedBy()).isEqualTo("target");
-        verify(fixture.client).setSelfUse(argThat((JsonNode body) -> body.path("minSoc").asInt() == 60
+        verify(fixture.client).setBackUp(argThat((JsonNode body) -> body.path("minSoc").asInt() == 60
             && body.path("chargeUpperSoc").asInt() == 60
             && body.path("chargeEndTimePeriod1").asString().equals("23:59")));
         assertThat(fixture.reserveRow.get().writeOutcome()).isEqualTo("sent");
