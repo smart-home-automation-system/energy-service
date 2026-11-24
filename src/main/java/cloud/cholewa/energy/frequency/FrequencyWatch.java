@@ -154,11 +154,14 @@ public class FrequencyWatch {
             .defaultIfEmpty("");
     }
 
-    //the outages of Tauron going on now: a generator of Tauron is the likely cause; none - a generator or a fault
+    //the outages of Tauron going on now: a generator of Tauron is the likely cause; none - a generator or a fault. Outages
+    //worded the same are told once: Tauron announces one work in several rows, each for other streets of the town (two on
+    //2026-11-24, the first real alert named the same outage twice)
     Mono<String> cause(final LocalDateTime now) {
         return plannedOutageRepository.findByClosedAtIsNullAndEndsAtAfterOrderByStartsAt(now)
             .filter(outage -> !outage.startsAt().isAfter(now))
             .map(FrequencyWatch::words)
+            .distinct()
             .collect(Collectors.joining("; "))
             .filter(outages -> !outages.isEmpty())
             .map(outages -> "the house is likely fed by a generator of Tauron: " + outages)
