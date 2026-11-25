@@ -53,7 +53,8 @@ planned outage of Tauron.
   `inverter_reading`, `GET /home/energy/inverters/sofar` and `sofar` in `/status`; its faults told on Discord;
 - **the planned outages of Tauron** (HAS-337): the announcements of Tauron Dystrybucja for the address of the house read
   every hour for 30 days ahead from its public API, stored in `planned_outage`, `GET /home/energy/outages/planned`; a
-  planned outage of the street of the house told by SMS, reminded by SMS the day before at 18:00 and 2 h before it starts;
+  planned outage of the street of the house told by SMS, reminded by SMS the day before at 18:00 and 2 h before it starts; an outage Tauron announces twice under two ids
+  is stored and told as one (HAS-477);
 - **the charge of the battery from the grid on demand** (HAS-336): `POST /home/energy/battery/charge` sets the Self Use
   work mode of the SOLAX through the SolaX cloud - the grid allowed up to the target in a window - follows the command,
   ends the run at its target or the end of its window and sets the Self Use the owner runs back; stored in

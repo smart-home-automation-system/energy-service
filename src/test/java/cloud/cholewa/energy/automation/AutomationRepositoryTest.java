@@ -99,7 +99,7 @@ class AutomationRepositoryTest {
             .flatMap(next -> outages.setSkipAutomation(next.id(), true).thenReturn(next))
             .as(StepVerifier::create).expectNextCount(1).verifyComplete();
 
-        outages.findFirstByClosedAtIsNullAndKindAndScopeAndSkipAutomationFalseAndStartsAtAfterOrderByStartsAt("planned",
+        outages.findFirstByClosedAtIsNullAndKindAndScopeAndSkipAutomationFalseAndStartsAtAfterOrderByStartsAtAscIdAsc("planned",
                 "street", NOW)
             .map(PlannedOutageEntity::outageId)
             .as(StepVerifier::create)
@@ -127,6 +127,21 @@ class AutomationRepositoryTest {
                         .map(read -> exists && run.id().equals(read.chargeRunId())))))
             .as(StepVerifier::create)
             .expectNext(true)
+            .verifyComplete();
+    }
+
+    //HAS-477: of two outages of the street at one start the older row, in every pass
+    @Test
+    void should_find_the_older_of_two_outages_at_one_start() {
+        outages.save(outage("first", "street", 5))
+            .then(outages.save(outage("second", "street", 5)))
+            .as(StepVerifier::create).expectNextCount(1).verifyComplete();
+
+        outages.findFirstByClosedAtIsNullAndKindAndScopeAndSkipAutomationFalseAndStartsAtAfterOrderByStartsAtAscIdAsc(
+                "planned", "street", NOW)
+            .map(PlannedOutageEntity::outageId)
+            .as(StepVerifier::create)
+            .expectNext("first")
             .verifyComplete();
     }
 }

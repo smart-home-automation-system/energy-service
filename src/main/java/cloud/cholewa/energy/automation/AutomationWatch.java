@@ -70,7 +70,7 @@ public class AutomationWatch {
         final LocalDateTime now = LocalDateTime.now(clock).truncatedTo(ChronoUnit.MICROS);
         return automationService.read()
             .flatMap(settings -> outages
-                .findFirstByClosedAtIsNullAndKindAndScopeAndSkipAutomationFalseAndStartsAtAfterOrderByStartsAt(
+                .findFirstByClosedAtIsNullAndKindAndScopeAndSkipAutomationFalseAndStartsAtAfterOrderByStartsAtAscIdAsc(
                     Announcement.PLANNED, AddressMatch.Scope.STREET.value(), now)
                 .flatMap(outage -> chargeService.power()
                     .flatMap(power -> step(settings, outage, power.soc(), now))
@@ -93,8 +93,9 @@ public class AutomationWatch {
             case SOC_NOT_KNOWN -> once("soc|" + outage.id(), () -> notificationPublisher.publishAlert(
                 "The automatic charge before the planned outage of " + PlannedOutageMessages.span(outage)
                     + " waits: the state of charge of the battery is not known."));
+            //a run linked to the outage, or one carried to it from a twin row of the same outage (HAS-477), is the only one
             case START -> runs.existsByPlannedOutageId(outage.id())
-                .filter(started -> !started)
+                .filter(started -> !started && outage.chargeRunId() == null)
                 .flatMap(none -> Mono.just(frequencyState.off())
                     .filter(off -> !off)
                     .switchIfEmpty(Mono.fromRunnable(() -> waitsForFrequency(outage)))
