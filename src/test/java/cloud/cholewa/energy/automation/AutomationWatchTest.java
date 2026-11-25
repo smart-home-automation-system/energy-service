@@ -265,6 +265,27 @@ class AutomationWatchTest {
         verify(kit.publisher(), times(1)).publishAlertSms(anyString());
     }
 
+    //the row carries one failed run of its twin and then gets runs of its own: the twin's run stays the first of the
+    //outage - taken over by the row -, so two more runs make three, the give-up counts three, and the failure the pod
+    //before told is not texted again
+    @Test
+    void should_keep_the_run_of_a_twin_row_once_the_row_has_runs_of_its_own() {
+        when(kit.outages().findFirstByClosedAtIsNullAndKindAndScopeAndSkipAutomationFalseAndStartsAtAfterOrderByStartsAtAscIdAsc(
+            eq("planned"), eq("street"), any())).thenReturn(Mono.just(OUTAGE.withChargeRunId(101L)));
+        when(kit.client().setSelfUse(any()))
+            .thenReturn(Mono.error(new SolaxCloudException("The SolaX cloud answered code 10500")));
+        kit.table().put(101L, failed(LocalDateTime.of(2026, 11, 3, 15, 58)).withId(101L).withPlannedOutageId(9L));
+        for (final int minute : new int[] {5, 6, 10, 11, 16, 30}) {
+            kit.moveTo(LocalDateTime.of(2026, 11, 3, 16, minute));
+            pass();
+        }
+
+        verify(kit.client(), times(2)).setSelfUse(any());
+        assertThat(kit.table().values()).extracting(BatteryChargeRunEntity::plannedOutageId).containsOnly(3L);
+        verify(kit.publisher(), times(1)).publishAlertSms(GIVEN_UP_TEXT);
+        verify(kit.publisher(), times(1)).publishAlertSms(anyString());
+    }
+
     //a failed run whose baseline is not set back yet: the next attempt is due but waits for it - no run, no text of a
     //refused start
     @Test

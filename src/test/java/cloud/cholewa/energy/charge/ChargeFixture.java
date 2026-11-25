@@ -88,6 +88,13 @@ final class ChargeFixture {
         });
         when(repository.findFirstByOrderByRequestedAtDesc()).thenAnswer(call -> Mono.justOrEmpty(table.values().stream()
             .max(Comparator.comparing(BatteryChargeRunEntity::requestedAt))));
+        when(repository.adopt(any(), any())).thenAnswer(call -> {
+            final List<BatteryChargeRunEntity> twins = table.values().stream()
+                .filter(run -> call.getArgument(1).equals(run.plannedOutageId()))
+                .toList();
+            twins.forEach(run -> table.put(run.id(), run.withPlannedOutageId(call.getArgument(0))));
+            return Mono.just(twins.size());
+        });
         when(repository.findOfOutage(any(), any())).thenAnswer(call -> {
             final Long twin = Optional.ofNullable(call.<Long>getArgument(1)).map(table::get)
                 .map(BatteryChargeRunEntity::plannedOutageId).orElse(null);

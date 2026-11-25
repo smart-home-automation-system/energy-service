@@ -439,7 +439,9 @@ IntelliJ.
     failed one included - a refused start left the battery uncharged with a word on Discord only). `AutomationRules.attemptsOf`
     (pure) reads the runs of the outage - one query a pass, `findOfOutage`: those linked to its row and, through the run a
     twin row carried (HAS-477), every run of that closed twin, so the attempts are counted per outage, not per row
-    (the /code-review of HAS-478) - `charge_run_id` is therefore kept on the latest run by the pass itself (`linkLatest`),
+    (the /code-review of HAS-478) - and those runs are **taken over by the row** in the same pass (`adopt`, in the lane of
+    the charges; a failure ends the pass before anything starts): once the row has a run of its own, `charge_run_id` no
+    longer leads to its twin, and the cancel of a taken-over run skips the row that lives - `charge_run_id` is therefore kept on the latest run by the pass itself (`linkLatest`),
     a run the cloud refused included: a run going on - nothing; one that ended by its target, its window or **a cancel - never another**;
     only failed ones - the next after `energy.automation.retry-every` (PT5M, 1 - 30 min, a bare number minutes) from the
     end of the last, at most `max-attempts` (3, 1 - 5) runs an outage. A retry is a plain start: its SMS is the start

@@ -1,5 +1,6 @@
 package cloud.cholewa.energy.database;
 
+import org.springframework.data.r2dbc.repository.Modifying;
 import org.springframework.data.r2dbc.repository.Query;
 import org.springframework.data.repository.reactive.ReactiveCrudRepository;
 import reactor.core.publisher.Flux;
@@ -19,6 +20,11 @@ public interface BatteryChargeRunRepository extends ReactiveCrudRepository<Batte
         + "OR planned_outage_id = (SELECT planned_outage_id FROM battery_charge_run WHERE id = :carriedRunId) "
         + "ORDER BY requested_at, id")
     Flux<BatteryChargeRunEntity> findOfOutage(Long outageId, Long carriedRunId);
+
+    //the runs of a closed twin row become the runs of the row that goes on (HAS-478) - the number of rows changed
+    @Modifying
+    @Query("UPDATE battery_charge_run SET planned_outage_id = :outageId WHERE planned_outage_id = :twinOutageId")
+    Mono<Integer> adopt(Long outageId, Long twinOutageId);
 
     //the runs requested in [from, to), the oldest first - GET /home/energy/battery/charge/runs
     Flux<BatteryChargeRunEntity> findByRequestedAtGreaterThanEqualAndRequestedAtLessThanOrderByRequestedAt(

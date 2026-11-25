@@ -20,6 +20,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.time.Clock;
@@ -112,11 +113,23 @@ public class AutomationWatch {
         return Mono.just(step)
             .filter(on -> on != AutomationRules.Step.OFF)
             .flatMap(on -> runs.findOfOutage(outage.id(), outage.chargeRunId()).collectList())
-            .flatMap(history -> linkLatest(outage, history).thenReturn(history))
+            .flatMap(history -> adoptTwins(outage, history).then(linkLatest(outage, history)).thenReturn(history))
             .map(history -> AutomationRules.attemptsOf(history, now, properties.maxAttempts(),
                 properties.retryEvery()))
             .flatMap(attempts -> tellFailures(outage, attempts)
                 .then(Mono.defer(() -> act(step, attempts, settings, outage, now))));
+    }
+
+    //the runs found through the run a twin row carried (HAS-477) are linked to this row before anything else: once the
+    //row has a run of its own, charge_run_id no longer leads to them. A failure ends the pass - nothing is started on a
+    //history that would be lost
+    private Mono<Void> adoptTwins(final PlannedOutageEntity outage, final List<BatteryChargeRunEntity> history) {
+        return Flux.fromStream(() -> history.stream()
+                .map(BatteryChargeRunEntity::plannedOutageId)
+                .filter(linked -> linked != null && !linked.equals(outage.id()))
+                .distinct())
+            .concatMap(twin -> chargeService.adopt(outage.id(), twin))
+            .then();
     }
 
     //charge_run_id of the outage is its latest run - a run the cloud refused included, which the start could not link

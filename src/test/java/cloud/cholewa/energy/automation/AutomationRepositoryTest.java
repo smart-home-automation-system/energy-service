@@ -136,6 +136,23 @@ class AutomationRepositoryTest {
             NOW.minusMinutes(minutesAgo), "failed", "DEVICE_FAILED", null, NOW.minusMinutes(minutesAgo), outageId);
     }
 
+    //HAS-478: the runs of a closed twin row taken over by the row that goes on - and only those
+    @Test
+    void should_link_the_runs_of_a_twin_row_to_the_row_that_goes_on() {
+        outages.save(outage("next", "street", 5))
+            .zipWith(outages.save(outage("twin", "street", 5).withClosedAt(NOW).withClosedAs("ended")))
+            .flatMapMany(pair -> runs.save(failedRun(pair.getT2().id(), 50))
+                .then(runs.save(failedRun(pair.getT2().id(), 40)))
+                .then(runs.save(failedRun(null, 20)))
+                .then(runs.adopt(pair.getT1().id(), pair.getT2().id()))
+                .flatMapMany(adopted -> runs.findOfOutage(pair.getT1().id(), null)
+                    .map(BatteryChargeRunEntity::requestedAt)
+                    .startWith(NOW.plusMinutes(adopted))))
+            .as(StepVerifier::create)
+            .expectNext(NOW.plusMinutes(2), NOW.minusMinutes(50), NOW.minusMinutes(40))
+            .verifyComplete();
+    }
+
     //HAS-478: the runs of an outage, the oldest first - also every run of the twin row whose run it carries (HAS-477),
     //never a manual one; without a carried run only its own
     @Test
