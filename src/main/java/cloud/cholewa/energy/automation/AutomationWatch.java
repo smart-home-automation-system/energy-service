@@ -58,6 +58,8 @@ public class AutomationWatch {
 
     static final Duration LIMIT = Duration.ofSeconds(50);
     static final Duration NOTICE_TIMEOUT = Duration.ofSeconds(6);
+    //how every text of the watch begins, the span of the outage after it
+    private static final String SUBJECT = "The automatic charge before the planned outage of ";
 
     private final AutomationService automationService;
     private final PlannedOutageRepository outages;
@@ -153,7 +155,7 @@ public class AutomationWatch {
                     settings.chargePowerKw(), settings.marginMinutes(), solaxProperties.batteryCapacity()))
                 .filter(latest -> !now.isBefore(latest))
                 .flatMap(due -> once("soc|" + outage.id(), () -> notificationPublisher.publishAlertSms(
-                    "The automatic charge before the planned outage of " + PlannedOutageMessages.span(outage)
+                    SUBJECT + PlannedOutageMessages.span(outage)
                         + " waits: the state of charge of the battery is not known.")));
             case START -> Mono.just(attempts.attempt())
                 .filter(attempt -> attempt == AutomationRules.Attempt.START)
@@ -179,13 +181,13 @@ public class AutomationWatch {
     }
 
     private String failed(final PlannedOutageEntity outage, final BatteryChargeRunEntity first) {
-        return "The automatic charge before the planned outage of " + PlannedOutageMessages.span(outage) + " failed ("
+        return SUBJECT + PlannedOutageMessages.span(outage) + " failed ("
             + Optional.ofNullable(first.failure()).orElse("no reason stored") + ") - a failed charge is tried again after "
             + properties.retryEvery().toMinutes() + " min, at most " + properties.maxAttempts() + " runs an outage.";
     }
 
     private static String gaveUp(final PlannedOutageEntity outage, final int attempts) {
-        return "The automatic charge before the planned outage of " + PlannedOutageMessages.span(outage)
+        return SUBJECT + PlannedOutageMessages.span(outage)
             + " is given up after " + attempts + (attempts == 1 ? " attempt" : " attempts")
             + " - the battery is not charged, charge it by hand.";
     }
@@ -216,7 +218,7 @@ public class AutomationWatch {
                 }
             });
             default -> once("refused|" + outage.id(), () -> notificationPublisher.publishAlertSms(
-                "The automatic charge before the planned outage of " + PlannedOutageMessages.span(outage)
+                SUBJECT + PlannedOutageMessages.span(outage)
                     + " did not start: " + refused.getMessage() + "."));
         };
     }
