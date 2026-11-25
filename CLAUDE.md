@@ -476,9 +476,20 @@ IntelliJ.
     sent command reaches the pass, so a command the inverter took is never told as not written.
   - The notices (Discord, never SMS): a write not taken - one alert, then quiet while it is retried; written again -
     one info; a reserve set `until` a time ended - one info, the baseline written.
-  - **The first real write is run with the owner watching SolaxCloud** (the DoD): what the remote settings show, the
-    charge from the grid to the level and its stop, the house then on the grid, the baseline after switching off - and
-    on a sunny day the top-up above the reserve and its use back down to it - go into this section.
+  - **The first real writes** (2026-11-24 / 25, the owner watching SolaxCloud). **The cloud never takes `minSoc`**: Self
+    Use kept 10 for a sent 20 and 80; Back Up (0.21.0) showed Min SoC 30 - the least of that mode - for a sent 80, with
+    Charge Battery To 80. So **the floor of the reserve is set by the owner by hand** in the Back Up window of SolaxCloud
+    (80 since 2026-11-24), and a write of the service does not undo it. Seen: the charge from the grid at 5.09 kW at 23:09,
+    84 % and idle on the grid the next morning; switched off at 10:55 - Self Use back within 17 s (the battery discharging
+    1 kW into the house); switched on at 10:56 - idle again, the floor set by hand kept. **Not seen yet**: the top-up from
+    the panels above the reserve and its use back down to it (no sun in those days).
+  - **"The API reads none of the settings" is the Open API** (its documentation read whole on 2026-11-25: no read of a
+    work mode nor of Min SoC; `deviceWorkingMode` is the EV charger's, `query_tou_set` the TOU plan). **The dongle answers
+    them locally**: `optType=ReadSetData` beside `ReadRealTimeData` (the same `pwd`) gives a bare array of 493 numbers,
+    steady between reads but for position 2. Read around the two writes above: 71 was 161 in Back Up and 160 in Self Use,
+    151 was 15127 (23:59 as minute * 256 + hour) in Back Up and 0 in Self Use, 144 followed Charge Battery To of Self Use
+    (80 after the charge, 10 with the baseline). Which position is the work mode and which the Min SoC of Back Up is
+    **not pinned** - no code reads `ReadSetData` yet.
 - **The planned outages of Tauron** (HAS-337, package `tauron`) - what is easy to break:
   - **The API** (the one of the Home Assistant integration Eales/tauron-dystrybucja, checked 2026-11-03): `cities?partName=`,
     `streets?partName=&ownerGAID=<the GAID of the town>` (not its OwnerGAID - that answers an empty list), `outages/address`
