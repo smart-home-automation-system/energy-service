@@ -1,13 +1,16 @@
 package cloud.cholewa.energy.automation;
 
+import cloud.cholewa.energy.database.BatteryChargeRunEntity;
 import cloud.cholewa.energy.error.EnergyError;
 import cloud.cholewa.energy.error.EnergyException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -53,5 +56,64 @@ class AutomationRulesTest {
     void should_take_settings_at_their_bounds() {
         AutomationRules.check(true, 10, 1.0, 0);
         AutomationRules.check(false, 100, 8.0, 720);
+    }
+
+    //HAS-478: the runs of an outage decide whether another one comes
+    private static final LocalDateTime NOW = LocalDateTime.of(2026, 11, 12, 4, 30);
+    private static final Duration PAUSE = Duration.ofMinutes(5);
+
+    private static BatteryChargeRunEntity run(final LocalDateTime endedAt, final String endedBy) {
+        return new BatteryChargeRunEntity(1L, NOW.minusHours(1), "automation", 100, NOW.minusHours(1), OUTAGE, "r-1",
+            null, null, 45.0, null, endedAt, endedBy, "failed".equals(endedBy) ? "DEVICE_FAILED" : null, null, endedAt,
+            7L);
+    }
+
+    private static AutomationRules.Attempt attemptOf(final BatteryChargeRunEntity... runs) {
+        return AutomationRules.attemptsOf(List.of(runs), NOW, 3, PAUSE).attempt();
+    }
+
+    @Test
+    void should_start_the_first_run_of_an_outage() {
+        assertThat(attemptOf()).isEqualTo(AutomationRules.Attempt.START);
+    }
+
+    @Test
+    void should_start_nothing_while_a_run_of_the_outage_goes_on() {
+        assertThat(attemptOf(run(NOW.minusMinutes(20), "failed"), run(null, null)))
+            .isEqualTo(AutomationRules.Attempt.RUNNING);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"target", "window", "cancel"})
+    void should_never_follow_a_run_that_was_no_failure(final String endedBy) {
+        assertThat(attemptOf(run(NOW.minusMinutes(40), "failed"), run(NOW.minusMinutes(20), endedBy)))
+            .isEqualTo(AutomationRules.Attempt.DONE);
+    }
+
+    //the pause counts from the end of the last failed run, its last minute included
+    @Test
+    void should_wait_for_the_pause_after_a_failed_run_and_then_start_again() {
+        assertThat(attemptOf(run(NOW.minusMinutes(4), "failed"))).isEqualTo(AutomationRules.Attempt.WAIT);
+        assertThat(attemptOf(run(NOW.minusMinutes(5), "failed"))).isEqualTo(AutomationRules.Attempt.START);
+        assertThat(attemptOf(run(NOW.minusMinutes(30), "failed"), run(NOW.minusMinutes(4), "failed")))
+            .isEqualTo(AutomationRules.Attempt.WAIT);
+    }
+
+    @Test
+    void should_give_up_once_the_attempts_are_used_up() {
+        final AutomationRules.Attempts attempts = AutomationRules.attemptsOf(List.of(
+            run(NOW.minusMinutes(10), "failed"), run(NOW.minusMinutes(30), "failed"),
+            run(NOW.minusMinutes(20), "failed")), NOW, 3, PAUSE);
+
+        assertThat(attempts.attempt()).isEqualTo(AutomationRules.Attempt.GIVEN_UP);
+        assertThat(attempts.firstFailed()).map(BatteryChargeRunEntity::endedAt).contains(NOW.minusMinutes(30));
+        assertThat(attempts.lastFailed()).map(BatteryChargeRunEntity::endedAt).contains(NOW.minusMinutes(10));
+    }
+
+    //one attempt configured: the first failure is the give-up
+    @Test
+    void should_give_up_at_the_first_failure_with_one_attempt() {
+        assertThat(AutomationRules.attemptsOf(List.of(run(NOW.minusMinutes(10), "failed")), NOW, 1, PAUSE).attempt())
+            .isEqualTo(AutomationRules.Attempt.GIVEN_UP);
     }
 }

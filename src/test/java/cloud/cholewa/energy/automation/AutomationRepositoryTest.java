@@ -122,11 +122,38 @@ class AutomationRepositoryTest {
             .flatMap(next -> runs.save(new BatteryChargeRunEntity(null, NOW, "automation", 100, NOW, NOW.plusHours(5),
                     "r-1", null, null, 45.0, null, null, null, null, null, null, next.id()))
                 .flatMap(run -> outages.setChargeRun(next.id(), run.id())
-                    .then(Mono.defer(() -> runs.existsByPlannedOutageId(next.id())))
+                    .then(Mono.defer(() -> runs.findOfOutage(next.id(), null).hasElements()))
                     .flatMap(exists -> outages.findById(next.id())
                         .map(read -> exists && run.id().equals(read.chargeRunId())))))
             .as(StepVerifier::create)
             .expectNext(true)
+            .verifyComplete();
+    }
+
+    private static BatteryChargeRunEntity failedRun(final Long outageId, final int minutesAgo) {
+        return new BatteryChargeRunEntity(null, NOW.minusMinutes(minutesAgo), "automation", 100,
+            NOW.minusMinutes(minutesAgo), NOW.plusHours(5), null, null, null, 45.0, null,
+            NOW.minusMinutes(minutesAgo), "failed", "DEVICE_FAILED", null, NOW.minusMinutes(minutesAgo), outageId);
+    }
+
+    //HAS-478: the runs of an outage, the oldest first - also every run of the twin row whose run it carries (HAS-477),
+    //never a manual one; without a carried run only its own
+    @Test
+    void should_find_the_runs_of_an_outage_and_the_one_carried_to_it() {
+        outages.save(outage("next", "street", 5))
+            .zipWith(outages.save(outage("twin", "street", 5).withClosedAt(NOW).withClosedAs("ended")))
+            .flatMapMany(pair -> runs.save(failedRun(pair.getT1().id(), 10))
+                .then(runs.save(failedRun(pair.getT1().id(), 30)))
+                .then(runs.save(failedRun(null, 20)))
+                .then(runs.save(failedRun(pair.getT2().id(), 60)))
+                .then(runs.save(failedRun(pair.getT2().id(), 50)))
+                .flatMapMany(carried -> runs.findOfOutage(pair.getT1().id(), carried.id())
+                    .map(BatteryChargeRunEntity::requestedAt)
+                    .concatWith(runs.findOfOutage(pair.getT1().id(), null)
+                        .map(BatteryChargeRunEntity::requestedAt))))
+            .as(StepVerifier::create)
+            .expectNext(NOW.minusMinutes(60), NOW.minusMinutes(50), NOW.minusMinutes(30), NOW.minusMinutes(10))
+            .expectNext(NOW.minusMinutes(30), NOW.minusMinutes(10))
             .verifyComplete();
     }
 

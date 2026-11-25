@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -40,9 +41,21 @@ class AutomationWatchTest {
     private final EnergyAutomationRepository settings = mock(EnergyAutomationRepository.class);
     private final AutomationPlan plan = kit.plan();
     private final FrequencyState frequencyState = mock(FrequencyState.class);
-    private final AutomationWatch watch = new AutomationWatch(new AutomationService(settings, kit.clock()), kit.outages(),
-        kit.repository(), kit.service(), plan, kit.publisher(), kit.outageLane(),
-        new SolaxProperties(Duration.ofSeconds(15), Duration.ofMinutes(1), 26.5), frequencyState, kit.clock());
+    private final AutomationWatch watch = watch();
+
+    //three runs an outage at most, five minutes after a failed one
+    private AutomationWatch watch() {
+        return new AutomationWatch(new AutomationService(settings, kit.clock()), kit.outages(), kit.repository(),
+            kit.service(), plan, kit.publisher(), kit.outageLane(),
+            new SolaxProperties(Duration.ofSeconds(15), Duration.ofMinutes(1), 26.5), frequencyState,
+            new AutomationProperties(3, Duration.ofMinutes(5)), kit.clock());
+    }
+
+    //a run of the outage that failed and set nothing back, as ChargeWatch or a refused command leaves it
+    private BatteryChargeRunEntity failed(final LocalDateTime endedAt) {
+        return kit.charging().withPlannedOutageId(3L).withRequestedAt(endedAt.minusMinutes(2)).withEndedAt(endedAt)
+            .withEndedBy("failed").withFailure("DEVICE_FAILED").withRestoredAt(endedAt);
+    }
 
     @BeforeEach
     void setUp() {
@@ -52,6 +65,7 @@ class AutomationWatchTest {
         when(kit.outages().setChargeRun(any(), any())).thenReturn(Mono.just(1));
         when(kit.publisher().publishInfoSms(anyString())).thenReturn(Mono.empty());
         when(kit.publisher().publishAlert(anyString())).thenReturn(Mono.empty());
+        when(kit.publisher().publishAlertSms(anyString())).thenReturn(Mono.empty());
     }
 
     private void switchOn(final boolean on) {
@@ -86,7 +100,7 @@ class AutomationWatchTest {
         assertThat(run.source()).isEqualTo("automation");
         assertThat(run.plannedOutageId()).isEqualTo(3L);
         assertThat(run.windowEnd()).isEqualTo(OUTAGE_START);
-        verify(kit.outages()).setChargeRun(3L, run.id());
+        verify(kit.outages(), atLeastOnce()).setChargeRun(3L, run.id());
         verify(kit.publisher()).publishInfoSms("Battery charging from the grid started before the planned outage of"
             + " Tue 3 Nov 20:00-23:00: SOC 45 % to 100 %.");
     }
@@ -111,7 +125,7 @@ class AutomationWatchTest {
         assertThat(kit.only().plannedOutageId()).isEqualTo(3L);
     }
 
-    //a window never started twice for one outage - a run that ended, cancelled or failed, included
+    //a window never started twice for one outage once a run of it ended by its target or its window
     @Test
     void should_never_start_a_second_run_for_one_outage() {
         kit.table().put(1L, kit.ended().withPlannedOutageId(3L));
@@ -153,24 +167,227 @@ class AutomationWatchTest {
         pass();
         pass();
 
-        verify(kit.publisher(), times(1)).publishAlert("The automatic charge before the planned outage of Tue 3 Nov"
+        verify(kit.publisher(), times(1)).publishAlertSms("The automatic charge before the planned outage of Tue 3 Nov"
             + " 20:00-23:00 waits: the state of charge of the battery is not known.");
         verify(kit.client(), never()).setSelfUse(any());
     }
 
-    //a start the cloud refused is told once and not tried again - its failed run is linked to the outage
+    private static final String FAILED_TEXT = "The automatic charge before the planned outage of Tue 3 Nov 20:00-23:00"
+        + " failed (DEVICE_FAILED) - a failed charge is tried again after 5 min, at most 3 runs an outage.";
+    private static final String GIVEN_UP_TEXT = "The automatic charge before the planned outage of Tue 3 Nov 20:00-23:00"
+        + " is given up after 3 attempts - the battery is not charged, charge it by hand.";
+
+    //HAS-478: a start the cloud refused leaves a failed run - texted once with the next pass, tried again after the pause
     @Test
-    void should_tell_once_a_start_the_cloud_refused() {
-        when(kit.client().setSelfUse(any())).thenReturn(Mono.error(new SolaxCloudException("The SolaX cloud answered code 10500")));
+    void should_text_a_start_the_cloud_refused_once_and_try_again_after_the_pause() {
+        when(kit.client().setSelfUse(any()))
+            .thenReturn(Mono.error(new SolaxCloudException("The SolaX cloud answered code 10500")))
+            .thenReturn(Mono.just("r-2"));
+        kit.moveTo(LocalDateTime.of(2026, 11, 3, 16, 5));
+        pass();
+        kit.moveTo(LocalDateTime.of(2026, 11, 3, 16, 6));
+        pass();
+        kit.moveTo(LocalDateTime.of(2026, 11, 3, 16, 9));
+        pass();
+
+        verify(kit.client(), times(1)).setSelfUse(any());
+        verify(kit.publisher(), times(1)).publishAlertSms(FAILED_TEXT);
+
+        kit.moveTo(LocalDateTime.of(2026, 11, 3, 16, 10));
+        pass();
+        kit.moveTo(LocalDateTime.of(2026, 11, 3, 16, 11));
+        pass();
+
+        verify(kit.client(), times(2)).setSelfUse(any());
+        verify(kit.publisher(), times(1)).publishAlertSms(anyString());
+        verify(kit.publisher(), times(1)).publishInfoSms(anyString());
+        //the refused run is linked on the outage by the pass after it - the start itself could not
+        verify(kit.outages(), atLeastOnce()).setChargeRun(3L, 1L);
+        assertThat(kit.table().values()).extracting(BatteryChargeRunEntity::endedBy).containsExactly("failed", null);
+        assertThat(kit.table().values()).extracting(BatteryChargeRunEntity::plannedOutageId).containsOnly(3L);
+    }
+
+    //a charge the inverter was not seen to take is ended as failed by the charge watch - tried again as well
+    @Test
+    void should_try_again_a_charge_that_was_not_seen() {
+        kit.moveTo(LocalDateTime.of(2026, 11, 3, 16, 0));
+        pass();
+        kit.table().put(101L, failed(LocalDateTime.of(2026, 11, 3, 16, 20)).withId(101L));
+        kit.moveTo(LocalDateTime.of(2026, 11, 3, 16, 21));
+        pass();
+
+        verify(kit.client(), never()).setSelfUse(any());
+        verify(kit.publisher(), times(1)).publishAlertSms(FAILED_TEXT);
+
+        kit.moveTo(LocalDateTime.of(2026, 11, 3, 16, 25));
+        pass();
+
+        verify(kit.client(), times(1)).setSelfUse(any());
+    }
+
+    //the whole of it as it happens: the first refusal texted, the second not, the third the give-up - two texts, three
+    //runs, and nothing more however long the outage is still ahead
+    @Test
+    void should_text_the_first_failure_and_the_give_up_of_three_refused_starts() {
+        when(kit.client().setSelfUse(any()))
+            .thenReturn(Mono.error(new SolaxCloudException("The SolaX cloud answered code 10500")));
+        for (final int minute : new int[] {5, 6, 10, 11, 15, 16, 21, 45}) {
+            kit.moveTo(LocalDateTime.of(2026, 11, 3, 16, minute));
+            pass();
+        }
+
+        verify(kit.client(), times(3)).setSelfUse(any());
+        verify(kit.publisher(), times(1)).publishAlertSms(FAILED_TEXT);
+        verify(kit.publisher(), times(1)).publishAlertSms(GIVEN_UP_TEXT);
+        verify(kit.publisher(), times(2)).publishAlertSms(anyString());
+        assertThat(kit.table().values()).extracting(BatteryChargeRunEntity::endedBy)
+            .containsExactly("failed", "failed", "failed");
+    }
+
+    //HAS-477 with HAS-478: the row goes on under a twin whose three runs failed - they are the runs of this outage
+    //(found through the run the row carries), so no fourth run and no text again
+    @Test
+    void should_count_the_failed_runs_of_a_twin_row_as_the_runs_of_the_outage() {
+        when(kit.outages().findFirstByClosedAtIsNullAndKindAndScopeAndSkipAutomationFalseAndStartsAtAfterOrderByStartsAtAscIdAsc(
+            eq("planned"), eq("street"), any())).thenReturn(Mono.just(OUTAGE.withChargeRunId(103L)));
+        kit.moveTo(LocalDateTime.of(2026, 11, 3, 16, 0));
+        pass();
+        kit.table().put(101L, failed(LocalDateTime.of(2026, 11, 3, 16, 10)).withId(101L).withPlannedOutageId(9L));
+        kit.table().put(102L, failed(LocalDateTime.of(2026, 11, 3, 16, 17)).withId(102L).withPlannedOutageId(9L));
+        kit.table().put(103L, failed(LocalDateTime.of(2026, 11, 3, 16, 24)).withId(103L).withPlannedOutageId(9L));
+        kit.moveTo(LocalDateTime.of(2026, 11, 3, 16, 25));
+        pass();
+        kit.moveTo(LocalDateTime.of(2026, 11, 3, 17, 0));
+        pass();
+
+        verify(kit.client(), never()).setSelfUse(any());
+        verify(kit.publisher(), times(1)).publishAlertSms(GIVEN_UP_TEXT);
+        verify(kit.publisher(), times(1)).publishAlertSms(anyString());
+    }
+
+    //a failed run whose baseline is not set back yet: the next attempt is due but waits for it - no run, no text of a
+    //refused start
+    @Test
+    void should_wait_with_the_next_attempt_while_the_failed_run_is_still_set_back() {
+        kit.moveTo(LocalDateTime.of(2026, 11, 3, 16, 0));
+        pass();
+        kit.table().put(101L, failed(LocalDateTime.of(2026, 11, 3, 16, 10)).withId(101L).withRestoredAt(null));
+        kit.moveTo(LocalDateTime.of(2026, 11, 3, 16, 20));
+        pass();
+        pass();
+
+        verify(kit.client(), never()).setSelfUse(any());
+        verify(kit.publisher(), times(1)).publishAlertSms(FAILED_TEXT);
+        verify(kit.publisher(), times(1)).publishAlertSms(anyString());
+    }
+
+    //the charge watch runs before the first pass of this watch: a run it ends as failed right after the pod start is
+    //a failure of this pod, and is texted
+    @Test
+    void should_text_a_failure_between_the_pod_start_and_the_first_pass() {
+        kit.moveTo(LocalDateTime.of(2026, 11, 3, 16, 10));
+        final AutomationWatch started = watch();
+        started.started();
+        kit.table().put(101L, failed(LocalDateTime.of(2026, 11, 3, 16, 10, 30)).withId(101L));
+        kit.moveTo(LocalDateTime.of(2026, 11, 3, 16, 10, 45));
+
+        started.pass().as(StepVerifier::create).verifyComplete();
+
+        verify(kit.publisher(), times(1)).publishAlertSms(FAILED_TEXT);
+    }
+
+    //the SOC not known weeks or hours before even an empty battery would have to start is nobody's SMS: 0 % to 100 %
+    //of 26.5 kWh at 5 kW is 318 min, plus the hour - 13:42 for the outage of 20:00
+    @Test
+    void should_not_text_the_soc_not_known_before_the_latest_planned_start() {
+        kit.battery(null, true);
+        kit.moveTo(LocalDateTime.of(2026, 11, 3, 13, 41));
+        pass();
+
+        verify(kit.publisher(), never()).publishAlertSms(anyString());
+
+        kit.moveTo(LocalDateTime.of(2026, 11, 3, 13, 42));
+        pass();
+
+        verify(kit.publisher(), times(1)).publishAlertSms(anyString());
+    }
+
+    //the attempts used up: one text more, no run more - whatever the time
+    @Test
+    void should_give_up_after_three_failed_runs_with_one_text() {
+        kit.moveTo(LocalDateTime.of(2026, 11, 3, 16, 0));
+        pass();
+        kit.table().put(101L, failed(LocalDateTime.of(2026, 11, 3, 16, 10)).withId(101L));
+        kit.table().put(102L, failed(LocalDateTime.of(2026, 11, 3, 16, 17)).withId(102L));
+        kit.table().put(103L, failed(LocalDateTime.of(2026, 11, 3, 16, 24)).withId(103L));
+        kit.moveTo(LocalDateTime.of(2026, 11, 3, 16, 25));
+        pass();
+        kit.moveTo(LocalDateTime.of(2026, 11, 3, 17, 30));
+        pass();
+
+        verify(kit.client(), never()).setSelfUse(any());
+        verify(kit.publisher(), times(1)).publishAlertSms(GIVEN_UP_TEXT);
+        verify(kit.publisher(), times(1)).publishAlertSms(anyString());
+    }
+
+    //a cancel is the owner's word: never another run, whatever failed before it
+    @Test
+    void should_never_try_again_after_a_cancelled_run() {
+        kit.table().put(101L, failed(LocalDateTime.of(2026, 11, 3, 16, 10)).withId(101L));
+        kit.table().put(102L, failed(LocalDateTime.of(2026, 11, 3, 16, 20)).withId(102L).withEndedBy("cancel")
+            .withFailure(null));
+        kit.moveTo(LocalDateTime.of(2026, 11, 3, 17, 0));
+
+        pass();
+
+        verify(kit.client(), never()).setSelfUse(any());
+    }
+
+    //a restart between the attempts: the failure of before is told by the pod before - no text again - and the next
+    //attempt comes at its time, counted from the stored runs
+    @Test
+    void should_text_nothing_again_after_a_restart_and_go_on_with_the_attempts() {
+        kit.table().put(101L, failed(LocalDateTime.of(2026, 11, 3, 16, 10)).withId(101L));
+        final AutomationWatch restarted = watch();
+        kit.moveTo(LocalDateTime.of(2026, 11, 3, 16, 12));
+        restarted.pass().as(StepVerifier::create).verifyComplete();
+
+        verify(kit.client(), never()).setSelfUse(any());
+
+        kit.moveTo(LocalDateTime.of(2026, 11, 3, 16, 15));
+        restarted.pass().as(StepVerifier::create).verifyComplete();
+
+        verify(kit.client(), times(1)).setSelfUse(any());
+        verify(kit.publisher(), never()).publishAlertSms(anyString());
+    }
+
+    //a give-up of before a restart is not texted again either
+    @Test
+    void should_not_text_a_give_up_of_before_a_restart_again() {
+        kit.table().put(101L, failed(LocalDateTime.of(2026, 11, 3, 16, 10)).withId(101L));
+        kit.table().put(102L, failed(LocalDateTime.of(2026, 11, 3, 16, 17)).withId(102L));
+        kit.table().put(103L, failed(LocalDateTime.of(2026, 11, 3, 16, 24)).withId(103L));
+        kit.moveTo(LocalDateTime.of(2026, 11, 3, 16, 30));
+
+        watch().pass().as(StepVerifier::create).verifyComplete();
+
+        verify(kit.publisher(), never()).publishAlertSms(anyString());
+        verify(kit.client(), never()).setSelfUse(any());
+    }
+
+    //a start refused before a run was made (here: the registry of the inverters not read) is texted once and tried
+    //with every pass - it used no attempt
+    @Test
+    void should_text_once_a_start_refused_before_a_run_was_made() {
+        kit.registryNotRead();
         kit.moveTo(LocalDateTime.of(2026, 11, 3, 16, 5));
         pass();
         kit.moveTo(LocalDateTime.of(2026, 11, 3, 16, 7));
         pass();
 
-        verify(kit.client(), times(1)).setSelfUse(any());
-        verify(kit.publisher(), times(1)).publishAlert("The automatic charge before the planned outage of Tue 3 Nov"
-            + " 20:00-23:00 did not start: The SolaX cloud refused the command.");
-        assertThat(kit.only().failure()).isEqualTo("DEVICE_FAILED");
+        verify(kit.publisher(), times(1)).publishAlertSms(anyString());
+        verify(kit.publisher(), never()).publishAlert(anyString());
+        assertThat(kit.table()).isEmpty();
     }
 
     @Test
@@ -188,6 +405,7 @@ class AutomationWatchTest {
     void should_never_start_a_run_for_an_outage_that_carries_the_run_of_its_twin() {
         when(kit.outages().findFirstByClosedAtIsNullAndKindAndScopeAndSkipAutomationFalseAndStartsAtAfterOrderByStartsAtAscIdAsc(
             eq("planned"), eq("street"), any())).thenReturn(Mono.just(OUTAGE.withChargeRunId(41L)));
+        kit.table().put(41L, kit.ended().withId(41L).withPlannedOutageId(9L));
         kit.moveTo(LocalDateTime.of(2026, 11, 3, 17, 0));
 
         pass();

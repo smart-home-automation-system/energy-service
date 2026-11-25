@@ -433,10 +433,30 @@ IntelliJ.
     (the outage start less the SOC to the target of 26.5 kWh at the charge power, minutes up, less the margin), held in
     `AutomationPlan` for `GET /battery/charge` and `/outages/planned` whether the switch is on or not. With the switch on and
     the planned start reached, `ChargeService.startBefore` starts the charge of HAS-336 with source `automation` until the
-    outage starts, linked to it (`battery_charge_run.planned_outage_id`); **a run linked to an outage - ended, cancelled or
-    failed - is never followed by a second one** (`existsByPlannedOutageId`); `planned_outage.charge_run_id` is the same
-    link for reading. The start is an info by SMS; a manual run going on is left alone (one INFO); the SOC not known or a
-    start the cloud refused is one alert (Discord), the "told once" held in memory per outage.
+    outage starts, linked to it (`battery_charge_run.planned_outage_id`); `planned_outage.charge_run_id` is the same link
+    for reading - the latest run. The start is an info by SMS; a manual run going on is left alone (one INFO).
+  - **A failed run is tried again** (HAS-478; until 0.21.1 a run of an outage was never followed by a second one, a
+    failed one included - a refused start left the battery uncharged with a word on Discord only). `AutomationRules.attemptsOf`
+    (pure) reads the runs of the outage - one query a pass, `findOfOutage`: those linked to its row and, through the run a
+    twin row carried (HAS-477), every run of that closed twin, so the attempts are counted per outage, not per row
+    (the /code-review of HAS-478) - `charge_run_id` is therefore kept on the latest run by the pass itself (`linkLatest`),
+    a run the cloud refused included: a run going on - nothing; one that ended by its target, its window or **a cancel - never another**;
+    only failed ones - the next after `energy.automation.retry-every` (PT5M, 1 - 30 min, a bare number minutes) from the
+    end of the last, at most `max-attempts` (3, 1 - 5) runs an outage. A retry is a plain start: its SMS is the start
+    SMS, its window ends at the outage, and it comes only while the planned start is reached and the SOC below the target.
+  - **The texts** (`publishAlertSms`, each once an outage): the first failed run (the outage, the reason code, that it
+    is tried again) and the give-up once the attempts are used up ("charge it by hand") - with one attempt configured only
+    the give-up. They are read from the stored runs, so a start the cloud refused is told with the pass after it, not in
+    it; **told once by the id of the run**, so a row that goes on under a twin repeats nothing. **A restart repeats
+    neither**: a failure that ended before the pod started (`since`, set at `@PostConstruct` - the charge watch ends runs
+    before the first pass here) is taken for told by the pod before - which also loses a text whose failure ended in the
+    last minute of that pod (accepted, as the summary does for its day). **The SOC not known is texted only once the
+    latest planned start is reached** (`AutomationRules.latestStart` - that of an empty battery): an outage weeks ahead
+    and a stale reading are nobody's SMS. A start refused before a run was made (the registry not read, a target below
+    the reserve) is texted once too - Discord only before; those use no attempt and are tried with every pass.
+    **Not told**: a next attempt that is due but cannot start - the failed run still being set back (`CHARGE_IN_PROGRESS`,
+    one INFO), the frequency off, the outage begun before the attempts were used up - ends without a give-up text; the
+    first-failure text is then the last word. `ChargeWatch` and the manual charge keep their notices on Discord.
   - The cancel of an automatic run (`DELETE /battery/charge`) skips its outage (`skip_automation`); the panel skips or allows
     one ahead with `PUT /outages/planned/{id}/skip` / `unskip` (`NOT_FOUND_PLANNED_OUTAGE` for one not announced).
   - **One lane for planned_outage** (`OutageLane`): the pass of `PlannedOutageWatch` saves whole rows read a moment before,
