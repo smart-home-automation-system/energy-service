@@ -233,19 +233,20 @@ class AnnouncementRulesTest {
         final List<PlannedOutageEntity> rows = reconcile(List.of(newer, older),
             List.of(TauronSamples.planned(WORK, START, END), twin(START, END)), NOW);
 
+        //the row kept first: a pass cut after it leaves two open rows for the next read, never a lost run
         assertThat(rows).hasSize(2);
         assertThat(rows.get(0)).satisfies(row -> {
-            assertThat(row.id()).isEqualTo(8);
-            assertThat(row.closedAs()).isEqualTo("ended");
-            assertThat(row.closedAt()).isEqualTo(NOW);
-            assertThat(row.notice()).isNull();
-        });
-        assertThat(rows.get(1)).satisfies(row -> {
             assertThat(row.id()).isEqualTo(7);
             assertThat(row.closedAt()).isNull();
             assertThat(row.notice()).isNull();
             assertThat(row.skipAutomation()).isTrue();
             assertThat(row.chargeRunId()).isEqualTo(41L);
+        });
+        assertThat(rows.get(1)).satisfies(row -> {
+            assertThat(row.id()).isEqualTo(8);
+            assertThat(row.closedAs()).isEqualTo("ended");
+            assertThat(row.closedAt()).isEqualTo(NOW);
+            assertThat(row.notice()).isNull();
         });
     }
 
@@ -257,8 +258,8 @@ class AnnouncementRulesTest {
                 TauronSamples.row(8, twin(START, END)).withFirstSeenAt(NOW.minusHours(6)).withChargeRunId(41L)),
             List.of(TauronSamples.planned(WORK, START, END), twin(START, END)), NOW);
 
-        assertThat(rows.get(1).chargeRunId()).isEqualTo(40L);
-        assertThat(rows.get(1).skipAutomation()).isFalse();
+        assertThat(rows.get(0).chargeRunId()).isEqualTo(40L);
+        assertThat(rows.get(0).skipAutomation()).isFalse();
     }
 
     //Tauron removes the announcement the row is keyed by while its twin stays: the row takes the id of the twin and
@@ -286,6 +287,57 @@ class AnnouncementRulesTest {
         assertThat(next.rows()).singleElement().satisfies(row -> {
             assertThat(row.id()).isEqualTo(7);
             assertThat(row.notice()).isNull();
+        });
+    }
+
+    //two rows stored before the rule, only the newer still announced: the older is closed without a word - never told
+    //as cancelled - and its run and skip go to the row that stays under its own id
+    @Test
+    void should_merge_a_stored_twin_that_is_no_longer_announced_into_the_row_still_announced() {
+        final PlannedOutageEntity older = TauronSamples.told(7, START, END).withChargeRunId(40L).withSkipAutomation(true);
+        final PlannedOutageEntity newer = TauronSamples.row(8, twin(START, END)).withFirstSeenAt(NOW.minusHours(6))
+            .withNotifiedAt(NOW.minusHours(6));
+
+        final AnnouncementRules.Result result = AnnouncementRules.reconcile(List.of(older, newer),
+            List.of(twin(START, END)), Set.of(AnnouncementRules.key(older)), NOW);
+
+        assertThat(result.missed()).isEmpty();
+        assertThat(result.rows()).hasSize(2);
+        assertThat(result.rows().get(0)).satisfies(row -> {
+            assertThat(row.id()).isEqualTo(8);
+            assertThat(row.outageId()).isEqualTo(TWIN);
+            assertThat(row.closedAt()).isNull();
+            assertThat(row.chargeRunId()).isEqualTo(40L);
+            assertThat(row.skipAutomation()).isTrue();
+        });
+        assertThat(result.rows().get(1)).satisfies(row -> {
+            assertThat(row.id()).isEqualTo(7);
+            assertThat(row.closedAs()).isEqualTo("ended");
+            assertThat(row.notice()).isNull();
+        });
+    }
+
+    //the order of the answer must not decide: another day of the same work listed before the twin is new, not the
+    //moved outage - the row goes on under its twin with its reminders and its run
+    @Test
+    void should_continue_under_the_twin_before_any_move_is_looked_for() {
+        final PlannedOutageEntity told = TauronSamples.told(7, START, END).withChargeRunId(40L);
+
+        final List<PlannedOutageEntity> rows = reconcile(List.of(told), List.of(
+            TauronSamples.planned(WORK, START.plusDays(2), END.plusDays(2)), twin(START, END)), NOW);
+
+        assertThat(rows).hasSize(2);
+        assertThat(rows.get(0)).satisfies(row -> {
+            assertThat(row.id()).isEqualTo(7);
+            assertThat(row.outageId()).isEqualTo(TWIN);
+            assertThat(row.closedAt()).isNull();
+            assertThat(row.notice()).isNull();
+            assertThat(row.chargeRunId()).isEqualTo(40L);
+        });
+        assertThat(rows.get(1)).satisfies(row -> {
+            assertThat(row.id()).isNull();
+            assertThat(row.notice()).isEqualTo("new");
+            assertThat(row.movedFrom()).isNull();
         });
     }
 

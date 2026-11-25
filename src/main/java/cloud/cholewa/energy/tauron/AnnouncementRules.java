@@ -29,10 +29,13 @@ import java.util.stream.Collectors;
 //Tauron sometimes announces one outage twice, under two ids (HAS-477, seen 2026-11-22): the announcements with the same
 //start, end, kind and words (Twin - the words as AddressMatch reads them) are one outage.
 //- one row for them: the row already held, the older of two; it keeps its id of Tauron. A twin never held is not stored
-//- two open rows of one outage (stored before this rule): the older stays, the newer is closed as ended, silently, its
-//  charge run and its skip carried to the row kept
+//- two open rows of one outage (stored before this rule): the older of those still announced under their id stays, the
+//  others are closed as ended, silently, their charge run and skip carried to the row kept
 //- the announcement a row is keyed by gone while its twin is still announced: the row takes the id of the twin and
 //  goes on - not cancelled, not new, no notice. From then on it is found by that id, a move of the twin included
+//The row kept is saved before its twins are closed: a pass cut between the two leaves two open rows for the next read,
+//never a closed twin whose run and skip were lost. A row goes on under its twin before any move is looked for, so the
+//order of the answer never turns it into a moved one
 final class AnnouncementRules {
 
     static final String NEW = "new";
@@ -74,38 +77,34 @@ final class AnnouncementRules {
         final Map<Twin, List<Announcement>> outages = heard.values().stream()
             .collect(Collectors.groupingBy(Twin::of, LinkedHashMap::new, Collectors.toList()));
 
+        final List<PlannedOutageEntity> unannounced = byKey.values().stream()
+            .filter(row -> !heard.containsKey(key(row)))
+            .toList();
         final List<PlannedOutageEntity> rows = new ArrayList<>();
-        final Set<String> kept = new HashSet<>();
-        final List<List<Announcement>> fresh = new ArrayList<>();
-        outages.values().forEach(twins -> {
-            final List<PlannedOutageEntity> stored = twins.stream()
+        final Set<String> settled = new HashSet<>();
+        final List<List<Announcement>> notHeld = new ArrayList<>();
+        outages.forEach((outage, twins) -> {
+            final List<PlannedOutageEntity> keyed = twins.stream()
                 .flatMap(announcement -> Optional.ofNullable(byKey.get(announcement.key())).stream())
                 .sorted(OLDER_FIRST)
                 .toList();
-            stored.forEach(row -> kept.add(key(row)));
-            stored.stream().findFirst().ifPresentOrElse(
-                row -> rows.addAll(asOne(row, stored, heard.get(key(row)), now)),
+            keyed.stream().findFirst().ifPresentOrElse(
+                row -> rows.addAll(asOne(row, others(keyed, take(outage, unannounced, settled)),
+                    heard.get(key(row)), now)),
+                () -> notHeld.add(twins));
+        });
+        final List<List<Announcement>> fresh = new ArrayList<>();
+        notHeld.forEach(twins -> {
+            final Announcement announcement = twins.getFirst();
+            final List<PlannedOutageEntity> under = take(Twin.of(announcement), unannounced, settled);
+            under.stream().findFirst().ifPresentOrElse(
+                row -> rows.addAll(asOne(row.withOutageId(announcement.outageId()), others(under, List.of()),
+                    announcement, now)),
                 () -> fresh.add(twins));
         });
-
-        final List<PlannedOutageEntity> gone = byKey.values().stream()
-            .filter(row -> !kept.contains(key(row)))
-            .toList();
-        final Set<String> settled = new HashSet<>();
-        fresh.forEach(twins -> {
-            final Announcement announcement = twins.getFirst();
-            final List<PlannedOutageEntity> under = gone.stream()
-                .filter(row -> !settled.contains(key(row)))
-                .filter(row -> Twin.of(row).equals(Twin.of(announcement)))
-                .sorted(OLDER_FIRST)
-                .toList();
-            under.forEach(row -> settled.add(key(row)));
-            under.stream().findFirst().ifPresentOrElse(
-                row -> rows.addAll(asOne(row.withOutageId(announcement.outageId()), under, announcement, now)),
-                () -> rows.addAll(newOrMoved(twins, gone, settled, now)));
-        });
+        fresh.forEach(twins -> rows.addAll(newOrMoved(twins, unannounced, settled, now)));
         final Set<String> missed = new HashSet<>();
-        gone.stream()
+        unannounced.stream()
             .filter(row -> !settled.contains(key(row)))
             .forEach(row -> {
                 if (missedBefore.contains(key(row)) || !row.endsAt().isAfter(now)) {
@@ -117,19 +116,38 @@ final class AnnouncementRules {
         return new Result(rows, Set.copyOf(missed));
     }
 
-    //the rows of one outage: the first (the oldest) seen again with what the others carry, the others closed silently
+    //the held rows of this outage that are no longer announced under their id, the oldest first - taken once
+    private static List<PlannedOutageEntity> take(final Twin outage, final List<PlannedOutageEntity> unannounced,
+                                                  final Set<String> settled) {
+        final List<PlannedOutageEntity> taken = unannounced.stream()
+            .filter(row -> !settled.contains(key(row)))
+            .filter(row -> Twin.of(row).equals(outage))
+            .sorted(OLDER_FIRST)
+            .toList();
+        taken.forEach(row -> settled.add(key(row)));
+        return taken;
+    }
+
+    //every row of an outage but the one kept
+    private static List<PlannedOutageEntity> others(final List<PlannedOutageEntity> oldestFirst,
+                                                    final List<PlannedOutageEntity> more) {
+        final List<PlannedOutageEntity> others = new ArrayList<>(oldestFirst.subList(1, oldestFirst.size()));
+        others.addAll(more);
+        return others;
+    }
+
+    //the rows of one outage: the one kept seen again with what its twins carry - saved first -, the twins closed silently
     private static List<PlannedOutageEntity> asOne(final PlannedOutageEntity keep,
-                                                   final List<PlannedOutageEntity> stored,
+                                                   final List<PlannedOutageEntity> twins,
                                                    final Announcement announcement, final LocalDateTime now) {
-        final List<PlannedOutageEntity> twins = stored.stream().skip(1).toList();
         final PlannedOutageEntity carried = keep
             .withSkipAutomation(keep.skipAutomation() || twins.stream().anyMatch(PlannedOutageEntity::skipAutomation))
             .withChargeRunId(Optional.ofNullable(keep.chargeRunId())
                 .or(() -> twins.stream().map(PlannedOutageEntity::chargeRunId).filter(Objects::nonNull).findFirst())
                 .orElse(null));
         final List<PlannedOutageEntity> rows = new ArrayList<>();
-        twins.forEach(twin -> rows.add(twin.withClosedAt(now).withClosedAs(ENDED).withNotice(null)));
         rows.add(seenAgain(carried, announcement, now));
+        twins.forEach(twin -> rows.add(twin.withClosedAt(now).withClosedAs(ENDED).withNotice(null)));
         return rows;
     }
 
