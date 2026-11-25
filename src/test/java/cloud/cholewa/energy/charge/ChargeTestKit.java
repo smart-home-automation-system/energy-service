@@ -11,6 +11,9 @@ import cloud.cholewa.energy.tauron.OutageLane;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.Optional;
+
+import static org.mockito.Mockito.when;
 
 //The charge with its fakes for the tests of other packages (HAS-338): a ChargeFixture with public accessors
 public final class ChargeTestKit {
@@ -62,6 +65,11 @@ public final class ChargeTestKit {
 
     public void moveTo(final LocalDateTime time) {
         fixture.moveTo(time);
+    }
+
+    //the registry of the inverters not read yet: a start is refused before a run is made
+    public void registryNotRead() {
+        when(fixture.registry.current()).thenReturn(Optional.empty());
     }
 
     public void battery(final Double soc, final boolean stale) {

@@ -28,7 +28,7 @@ public final class ChargeRules {
     static final String BY_TARGET = "target";
     static final String BY_WINDOW = "window";
     static final String BY_CANCEL = "cancel";
-    static final String BY_FAILURE = "failed";
+    public static final String BY_FAILURE = "failed";
 
     private ChargeRules() {
     }

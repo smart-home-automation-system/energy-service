@@ -169,6 +169,10 @@ energy:
       charge-upper-soc: 10
       discharge-start: "00:00"
       discharge-end: "23:59"
+  # the automatic charge before a planned outage (HAS-478): a failed run is tried again after the pause, at most so often
+  automation:
+    max-attempts: 3
+    retry-every: PT5M
   tauron:
     base-url: https://www.tauron-dystrybucja.pl
     city: ${tauron-city}

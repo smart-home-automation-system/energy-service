@@ -69,6 +69,14 @@ public class ChargeService {
         return start(target, asked.until(), source, null).map(ChargeService::reply);
     }
 
+    //the runs of a closed twin row of an outage linked to the row that goes on (HAS-477, HAS-478) - in the lane of the
+    //charges, since the charge watch saves whole runs read a moment before
+    public Mono<Integer> adopt(final long plannedOutageId, final long twinOutageId) {
+        return commands.serially(repository.adopt(plannedOutageId, twinOutageId))
+            .doOnNext(adopted -> log.info("The planned outage {} took over {} charge(s) of its twin row {}",
+                plannedOutageId, adopted, twinOutageId));
+    }
+
     //the charge the automation starts before a planned outage (HAS-338): to the target until the outage starts, linked to
     //it - its cancel skips that outage
     public Mono<BatteryChargeRunEntity> startBefore(final long plannedOutageId, final int target,

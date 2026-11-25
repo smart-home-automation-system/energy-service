@@ -70,8 +70,9 @@ planned outage of Tauron.
   an info when it is back; the inverters do not connect to such a grid, so the automatic charge waits;
 - **the automatic charge before a planned outage** (HAS-338), behind a switch off by default: for the next planned outage
   of the street the start is computed every minute from the SOC, the target, the charge power and the margin, and with the
-  switch on the charge starts then - once an outage, until the outage starts, told by SMS; the panel skips an outage or
-  cancels the charge (which skips its outage);
+  switch on the charge starts then, until the outage starts, told by SMS; a run that failed is tried again after 5 min,
+  at most three runs an outage, its first failure and the give-up texted (HAS-478); the panel skips an outage or cancels
+  the charge (which skips its outage and is never tried again);
 - **the daily energy summary** (HAS-339): at 21:30 of the house one info on Discord - the production of each inverter and
   the hour with the most of it, the house load and its self-consumption, the grid imported and exported, the battery
   charged, discharged and its SOC now, and the month so far (the export credited at the ratio of the agreement less the
