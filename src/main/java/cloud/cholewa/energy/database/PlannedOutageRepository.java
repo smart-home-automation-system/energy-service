@@ -19,8 +19,9 @@ public interface PlannedOutageRepository extends ReactiveCrudRepository<PlannedO
     //the coming ones and the one going on, the soonest first - GET /home/energy/outages/planned
     Flux<PlannedOutageEntity> findByClosedAtIsNullAndEndsAtAfterOrderByStartsAt(LocalDateTime now);
 
-    //the next outage of this kind and scope starting after now, not skipped (HAS-338)
-    Mono<PlannedOutageEntity> findFirstByClosedAtIsNullAndKindAndScopeAndSkipAutomationFalseAndStartsAtAfterOrderByStartsAt(
+    //the next outage of this kind and scope starting after now, not skipped (HAS-338) - of two at one start the older
+    //row, so that every pass sees the same one (HAS-477)
+    Mono<PlannedOutageEntity> findFirstByClosedAtIsNullAndKindAndScopeAndSkipAutomationFalseAndStartsAtAfterOrderByStartsAtAscIdAsc(
         String kind, String scope, LocalDateTime now);
 
     //the skip of the panel, on an outage still announced - the number of rows changed (HAS-338)

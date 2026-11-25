@@ -17,6 +17,7 @@ class AnnouncementRulesTest {
 
     private static final LocalDateTime START = LocalDateTime.of(2026, 11, 12, 8, 0);
     private static final LocalDateTime END = LocalDateTime.of(2026, 11, 12, 13, 0);
+    private static final String TWIN = "00000000-0000-0000-0000-000000000009";
 
     //the read before missed every held outage too - what is gone now is closed
     private static List<PlannedOutageEntity> reconcile(final List<PlannedOutageEntity> held,
@@ -183,5 +184,182 @@ class AnnouncementRulesTest {
             assertThat(row.closedAs()).isEqualTo("ended");
             assertThat(row.notice()).isNull();
         });
+    }
+
+    //HAS-477, seen 2026-11-22: Tauron announces one outage twice, under two ids - the same start, end and kind, the
+    //words differing only in whitespace and case
+    private static Announcement twin(final LocalDateTime start, final LocalDateTime end) {
+        return new Announcement(TWIN, Announcement.PLANNED, "street", start, end, "  Testowo   UL. Przykładowa ");
+    }
+
+    @Test
+    void should_hold_a_doubled_announcement_of_one_answer_as_one_outage() {
+        final List<PlannedOutageEntity> rows = reconcile(List.of(),
+            List.of(TauronSamples.planned(WORK, START, END), twin(START, END)), NOW);
+
+        assertThat(rows).singleElement().satisfies(row -> {
+            assertThat(row.outageId()).isEqualTo(WORK);
+            assertThat(row.notice()).isEqualTo("new");
+        });
+    }
+
+    //the case of 10.11 / 16.11: the second announcement comes days after the first was stored and told
+    @Test
+    void should_not_store_a_twin_that_arrives_with_a_later_read() {
+        final PlannedOutageEntity told = TauronSamples.told(7, START, END);
+
+        final AnnouncementRules.Result result = AnnouncementRules.reconcile(List.of(told),
+            List.of(twin(START, END), TauronSamples.planned(WORK, START, END)), Set.of(), NOW);
+
+        assertThat(result.missed()).isEmpty();
+        assertThat(result.rows()).singleElement().satisfies(row -> {
+            assertThat(row.id()).isEqualTo(7);
+            assertThat(row.outageId()).isEqualTo(WORK);
+            assertThat(row.closedAt()).isNull();
+            assertThat(row.notice()).isNull();
+        });
+    }
+
+    //two rows stored before the rule: the older stays, the newer closed without a word, its run and skip carried
+    @Test
+    void should_close_the_newer_of_two_stored_rows_of_one_outage_silently_and_carry_its_run_and_skip() {
+        final PlannedOutageEntity older = TauronSamples.told(7, START, END);
+        final PlannedOutageEntity newer = TauronSamples.row(8, twin(START, END))
+            .withFirstSeenAt(NOW.minusHours(6))
+            .withNotifiedAt(NOW.minusHours(6))
+            .withSkipAutomation(true)
+            .withChargeRunId(41L);
+
+        final List<PlannedOutageEntity> rows = reconcile(List.of(newer, older),
+            List.of(TauronSamples.planned(WORK, START, END), twin(START, END)), NOW);
+
+        //the row kept first: a pass cut after it leaves two open rows for the next read, never a lost run
+        assertThat(rows).hasSize(2);
+        assertThat(rows.get(0)).satisfies(row -> {
+            assertThat(row.id()).isEqualTo(7);
+            assertThat(row.closedAt()).isNull();
+            assertThat(row.notice()).isNull();
+            assertThat(row.skipAutomation()).isTrue();
+            assertThat(row.chargeRunId()).isEqualTo(41L);
+        });
+        assertThat(rows.get(1)).satisfies(row -> {
+            assertThat(row.id()).isEqualTo(8);
+            assertThat(row.closedAs()).isEqualTo("ended");
+            assertThat(row.closedAt()).isEqualTo(NOW);
+            assertThat(row.notice()).isNull();
+        });
+    }
+
+    //the run of the row kept is never replaced by the twin's
+    @Test
+    void should_keep_the_run_of_the_older_row() {
+        final List<PlannedOutageEntity> rows = reconcile(
+            List.of(TauronSamples.told(7, START, END).withChargeRunId(40L),
+                TauronSamples.row(8, twin(START, END)).withFirstSeenAt(NOW.minusHours(6)).withChargeRunId(41L)),
+            List.of(TauronSamples.planned(WORK, START, END), twin(START, END)), NOW);
+
+        assertThat(rows.get(0).chargeRunId()).isEqualTo(40L);
+        assertThat(rows.get(0).skipAutomation()).isFalse();
+    }
+
+    //Tauron removes the announcement the row is keyed by while its twin stays: the row takes the id of the twin and
+    //goes on - at once, not after two reads, with no notice; from then on it is found by that id
+    @Test
+    void should_continue_a_row_under_its_twin_once_its_own_announcement_is_gone() {
+        final PlannedOutageEntity told = TauronSamples.told(7, START, END);
+
+        final AnnouncementRules.Result result = AnnouncementRules.reconcile(List.of(told), List.of(twin(START, END)),
+            Set.of(AnnouncementRules.key(told)), NOW);
+
+        assertThat(result.missed()).isEmpty();
+        assertThat(result.rows()).singleElement().satisfies(row -> {
+            assertThat(row.id()).isEqualTo(7);
+            assertThat(row.outageId()).isEqualTo(TWIN);
+            assertThat(row.closedAt()).isNull();
+            assertThat(row.notice()).isNull();
+            assertThat(row.notifiedAt()).isEqualTo(told.notifiedAt());
+            assertThat(row.lastSeenAt()).isEqualTo(NOW);
+        });
+
+        final AnnouncementRules.Result next = AnnouncementRules.reconcile(result.rows(), List.of(twin(START, END)),
+            result.missed(), NOW.plusHours(1));
+
+        assertThat(next.rows()).singleElement().satisfies(row -> {
+            assertThat(row.id()).isEqualTo(7);
+            assertThat(row.notice()).isNull();
+        });
+    }
+
+    //two rows stored before the rule, only the newer still announced: the older is closed without a word - never told
+    //as cancelled - and its run and skip go to the row that stays under its own id
+    @Test
+    void should_merge_a_stored_twin_that_is_no_longer_announced_into_the_row_still_announced() {
+        final PlannedOutageEntity older = TauronSamples.told(7, START, END).withChargeRunId(40L).withSkipAutomation(true);
+        final PlannedOutageEntity newer = TauronSamples.row(8, twin(START, END)).withFirstSeenAt(NOW.minusHours(6))
+            .withNotifiedAt(NOW.minusHours(6));
+
+        final AnnouncementRules.Result result = AnnouncementRules.reconcile(List.of(older, newer),
+            List.of(twin(START, END)), Set.of(AnnouncementRules.key(older)), NOW);
+
+        assertThat(result.missed()).isEmpty();
+        assertThat(result.rows()).hasSize(2);
+        assertThat(result.rows().get(0)).satisfies(row -> {
+            assertThat(row.id()).isEqualTo(8);
+            assertThat(row.outageId()).isEqualTo(TWIN);
+            assertThat(row.closedAt()).isNull();
+            assertThat(row.chargeRunId()).isEqualTo(40L);
+            assertThat(row.skipAutomation()).isTrue();
+        });
+        assertThat(result.rows().get(1)).satisfies(row -> {
+            assertThat(row.id()).isEqualTo(7);
+            assertThat(row.closedAs()).isEqualTo("ended");
+            assertThat(row.notice()).isNull();
+        });
+    }
+
+    //the order of the answer must not decide: another day of the same work listed before the twin is new, not the
+    //moved outage - the row goes on under its twin with its reminders and its run
+    @Test
+    void should_continue_under_the_twin_before_any_move_is_looked_for() {
+        final PlannedOutageEntity told = TauronSamples.told(7, START, END).withChargeRunId(40L);
+
+        final List<PlannedOutageEntity> rows = reconcile(List.of(told), List.of(
+            TauronSamples.planned(WORK, START.plusDays(2), END.plusDays(2)), twin(START, END)), NOW);
+
+        assertThat(rows).hasSize(2);
+        assertThat(rows.get(0)).satisfies(row -> {
+            assertThat(row.id()).isEqualTo(7);
+            assertThat(row.outageId()).isEqualTo(TWIN);
+            assertThat(row.closedAt()).isNull();
+            assertThat(row.notice()).isNull();
+            assertThat(row.chargeRunId()).isEqualTo(40L);
+        });
+        assertThat(rows.get(1)).satisfies(row -> {
+            assertThat(row.id()).isNull();
+            assertThat(row.notice()).isEqualTo("new");
+            assertThat(row.movedFrom()).isNull();
+        });
+    }
+
+    //the rows of 24.11: the same hours, other streets - two outages
+    @Test
+    void should_hold_two_outages_with_the_same_hours_and_other_words_apart() {
+        final List<PlannedOutageEntity> rows = reconcile(List.of(), List.of(
+            TauronSamples.planned(WORK, START, END),
+            new Announcement(TWIN, Announcement.PLANNED, "town", START, END, "Testowo ul. Inna")), NOW);
+
+        assertThat(rows).extracting(PlannedOutageEntity::outageId).containsExactly(WORK, TWIN);
+    }
+
+    //the same words at other hours, or a failure beside a planned outage, are not twins
+    @Test
+    void should_hold_the_same_words_at_another_end_or_of_another_kind_apart() {
+        final List<PlannedOutageEntity> rows = reconcile(List.of(), List.of(
+            TauronSamples.planned(WORK, START, END),
+            twin(START, END.plusHours(1)),
+            new Announcement("failure", Announcement.UNPLANNED, "street", START, END, "Testowo ul. Przykładowa")),
+            NOW);
+
+        assertThat(rows).hasSize(3);
     }
 }

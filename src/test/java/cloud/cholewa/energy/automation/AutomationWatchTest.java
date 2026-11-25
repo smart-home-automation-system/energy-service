@@ -47,7 +47,7 @@ class AutomationWatchTest {
     @BeforeEach
     void setUp() {
         switchOn(true);
-        when(kit.outages().findFirstByClosedAtIsNullAndKindAndScopeAndSkipAutomationFalseAndStartsAtAfterOrderByStartsAt(
+        when(kit.outages().findFirstByClosedAtIsNullAndKindAndScopeAndSkipAutomationFalseAndStartsAtAfterOrderByStartsAtAscIdAsc(
             eq("planned"), eq("street"), any())).thenReturn(Mono.just(OUTAGE));
         when(kit.outages().setChargeRun(any(), any())).thenReturn(Mono.just(1));
         when(kit.publisher().publishInfoSms(anyString())).thenReturn(Mono.empty());
@@ -175,11 +175,23 @@ class AutomationWatchTest {
 
     @Test
     void should_clear_the_plan_without_an_outage() {
-        when(kit.outages().findFirstByClosedAtIsNullAndKindAndScopeAndSkipAutomationFalseAndStartsAtAfterOrderByStartsAt(
+        when(kit.outages().findFirstByClosedAtIsNullAndKindAndScopeAndSkipAutomationFalseAndStartsAtAfterOrderByStartsAtAscIdAsc(
             eq("planned"), eq("street"), any())).thenReturn(Mono.empty());
 
         pass();
 
         assertThat(plan.current()).isEmpty();
+    }
+
+    //HAS-477: the run of a twin row of the same outage, carried to the row kept, counts as its run
+    @Test
+    void should_never_start_a_run_for_an_outage_that_carries_the_run_of_its_twin() {
+        when(kit.outages().findFirstByClosedAtIsNullAndKindAndScopeAndSkipAutomationFalseAndStartsAtAfterOrderByStartsAtAscIdAsc(
+            eq("planned"), eq("street"), any())).thenReturn(Mono.just(OUTAGE.withChargeRunId(41L)));
+        kit.moveTo(LocalDateTime.of(2026, 11, 3, 17, 0));
+
+        pass();
+
+        verify(kit.client(), never()).setSelfUse(any());
     }
 }

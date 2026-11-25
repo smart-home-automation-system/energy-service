@@ -520,6 +520,21 @@ IntelliJ.
     `cancelled`, told only for the street once it was told; anything else gone - `ended`, silently. **Gone means missed by
     two reads in a row** (the set of missed keys in memory, a restart counts anew), at once when it is over or moved - one
     empty answer of Tauron would otherwise cancel everything and announce it again an hour later.
+  - **One outage announced twice is one row** (HAS-477, seen 2026-11-22: the outage of 22.11 under two `OutageId`s, the
+    words differing only in whitespace): the announcements with the same start, end, kind and words - the words as
+    `AddressMatch.words` reads them - are one outage (`AnnouncementRules.Twin`). The row already held stays, the older of
+    two, and keeps its id; a twin never held is not stored. Two open rows stored before the rule: the older of those still announced under
+    their id stays, the others - one no longer announced too - are closed as `ended` without a notice, their
+    `charge_run_id` and `skip_automation` carried to the row kept, **which is saved first** (a pass cut between the two
+    saves leaves two open rows for the next read, never a lost run); a row goes on under its twin **before any move is
+    looked for**, so the order of the answer never makes it a moved one (both from the /code-review of HAS-477) - and `AutomationWatch`
+    starts no run for a row that carries one (the run table still names the closed row). **The announcement a row is keyed
+    by gone while its twin stays: the row takes the id of the twin** (decided in HAS-477, pinned by
+    `AnnouncementRulesTest`) - at once, not after two missed reads, no notice; the partial unique index allows it, since no
+    open row holds that key, and later reads and a move of the twin find the row by its id as any other. Not healed: a
+    twin whose hours Tauron changed alone is a new outage until its other half follows (then the two rows are merged);
+    the cancel of a run that names a closed twin row skips nothing. The next outage of the automation is ordered by its
+    start, then its id, so two at one start are always the same one.
   - `NoticeRules` (pure): the planned outage of the street `new` / `changed` / `moved` by `publishAlertSms`, a failure of the
     street `publishAlert`, the town `publishInfo`, a cancellation `publishInfo` (owner, 2026-11-03: no SMS); the reminders by
     `publishReminderSms` the day before at `reminder-at` and `remind-before` the start, each only when the last notice came
