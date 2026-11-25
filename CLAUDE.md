@@ -476,20 +476,27 @@ IntelliJ.
     sent command reaches the pass, so a command the inverter took is never told as not written.
   - The notices (Discord, never SMS): a write not taken - one alert, then quiet while it is retried; written again -
     one info; a reserve set `until` a time ended - one info, the baseline written.
-  - **The first real writes** (2026-11-24 / 25, the owner watching SolaxCloud). **The cloud never takes `minSoc`**: Self
-    Use kept 10 for a sent 20 and 80; Back Up (0.21.0) showed Min SoC 30 - the least of that mode - for a sent 80, with
-    Charge Battery To 80. So **the floor of the reserve is set by the owner by hand** in the Back Up window of SolaxCloud
-    (80 since 2026-11-24), and a write of the service does not undo it. Seen: the charge from the grid at 5.09 kW at 23:09,
-    84 % and idle on the grid the next morning; switched off at 10:55 - Self Use back within 17 s (the battery discharging
-    1 kW into the house); switched on at 10:56 - idle again, the floor set by hand kept. **Not seen yet**: the top-up from
-    the panels above the reserve and its use back down to it (no sun in those days).
+  - **The first real writes** (2026-11-24 / 25, the owner watching SolaxCloud and the application). **The write sets
+    Charge Battery To, never the Min SoC of Back Up**, and **the inverter pulls its Min SoC down to Charge Battery To,
+    never up** - proven by six writes read back from the dongle: 80 from Self Use left Min SoC at 30; 75 with Min SoC 80
+    set by hand gave 75 / 75; 85 gave Charge Battery To 85 and left 75; 75 gave 75 / 75; 80 at a battery of 85 % gave
+    Charge Battery To 80 and left 75. So **the floor is raised only by the owner by hand** (the Back Up window of
+    SolaxCloud or the application), and **a reserve lowered and raised again leaves the floor at the lower level** - no
+    code notices it yet. Self Use is not affected: every return showed its Min SoC 10 again. Seen besides: the charge from
+    the grid at 5.09 kW at 23:09, 84 % and idle on the grid the next morning; switched off at 10:55 - Self Use back within
+    17 s (the battery discharging 1 kW into the house); switched on at 10:56 - idle again. **Not seen yet**: the top-up
+    from the panels above the reserve and its use back down to it (no sun in those days).
   - **"The API reads none of the settings" is the Open API** (its documentation read whole on 2026-11-25: no read of a
     work mode nor of Min SoC; `deviceWorkingMode` is the EV charger's, `query_tou_set` the TOU plan). **The dongle answers
     them locally**: `optType=ReadSetData` beside `ReadRealTimeData` (the same `pwd`) gives a bare array of 493 numbers,
-    steady between reads but for position 2. Read around the two writes above: 71 was 161 in Back Up and 160 in Self Use,
-    151 was 15127 (23:59 as minute * 256 + hour) in Back Up and 0 in Self Use, 144 followed Charge Battery To of Self Use
-    (80 after the charge, 10 with the baseline). Which position is the work mode and which the Min SoC of Back Up is
-    **not pinned** - no code reads `ReadSetData` yet.
+    steady between reads but for positions 1 and 2. **Pinned by the writes above: 146 is the Min SoC of Back Up, 148 its
+    Charge Battery To.** Seen, not pinned: 71 was 161 in Back Up and 160 in Self Use, 151 was 15127 (23:59 as
+    minute * 256 + hour) in Back Up and 0 in Self Use, 144 followed Charge Battery To of Self Use. Which position is the
+    work mode is open - no code reads `ReadSetData` yet (HAS-518).
+  - **Other ways to the Min SoC, none tried** (searched 2026-11-25): the community integrations of the Open API send the
+    body this service sends; SolaX says a Min SoC is taken only at least 2 % below the charge of the battery - 80 at 85 %
+    was still not taken, so that is not the cause here. The dongle is reported to take writes (`optType=setReg`) and the
+    inverter has a Modbus register of the Back Up Min SoC - both are writes straight to the inverter, the owner's call.
 - **The planned outages of Tauron** (HAS-337, package `tauron`) - what is easy to break:
   - **The API** (the one of the Home Assistant integration Eales/tauron-dystrybucja, checked 2026-11-03): `cities?partName=`,
     `streets?partName=&ownerGAID=<the GAID of the town>` (not its OwnerGAID - that answers an empty list), `outages/address`
