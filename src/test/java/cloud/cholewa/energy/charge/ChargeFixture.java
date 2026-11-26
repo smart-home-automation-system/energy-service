@@ -15,6 +15,8 @@ import cloud.cholewa.energy.meter.GridService;
 import cloud.cholewa.energy.registry.InverterRegistry;
 import cloud.cholewa.energy.solax.SolaxProperties;
 import cloud.cholewa.energy.solax.SolaxSamples;
+import cloud.cholewa.energy.solax.SolaxSettingsProperties;
+import cloud.cholewa.energy.solax.SolaxSettingsTracker;
 import cloud.cholewa.energy.solaxcloud.SolaxCloudClient;
 import cloud.cholewa.home.model.InverterBrand;
 import reactor.core.publisher.Flux;
@@ -52,6 +54,8 @@ final class ChargeFixture {
     final ChargeWatchFlag flag = new ChargeWatchFlag();
     final EnergyReserveRepository reserves = mock(EnergyReserveRepository.class);
     final AtomicReference<EnergyReserveEntity> reserveRow = new AtomicReference<>(ChargeSamples.reserveNeverWritten());
+    final SolaxSettingsTracker settings = new SolaxSettingsTracker(new SolaxSettingsProperties(
+        Duration.ofMinutes(5), Duration.ofSeconds(20), Duration.ofMinutes(15)), clock);
     final ReserveService reserve;
     final InverterCommands commands;
     final ChargeService service;
@@ -61,8 +65,10 @@ final class ChargeFixture {
     ChargeFixture() {
         moveTo(ChargeSamples.NOW);
         final SolaxProperties solax = new SolaxProperties(Duration.ofSeconds(15), Duration.ofMinutes(1), 26.5);
-        commands = new InverterCommands(client, registry, ChargeSamples.PROPERTIES, SolaxSamples.JSON, clock);
-        reserve = new ReserveService(reserves, repository, commands, publisher, ChargeSamples.PROPERTIES, clock);
+        commands = new InverterCommands(client, registry, ChargeSamples.PROPERTIES, SolaxSamples.JSON, settings,
+            clock);
+        reserve = new ReserveService(reserves, repository, commands, publisher, ChargeSamples.PROPERTIES, settings,
+            clock);
         service = new ChargeService(repository, commands, batteryService, gridService, publisher,
             ChargeSamples.PROPERTIES, solax, flag, outages, new OutageLane(), plan, reserve, clock);
         watch = new ChargeWatch(repository, commands, service, ChargeSamples.PROPERTIES, flag, clock);

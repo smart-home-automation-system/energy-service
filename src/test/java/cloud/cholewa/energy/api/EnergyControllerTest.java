@@ -43,6 +43,7 @@ import cloud.cholewa.energy.api.model.ChargeReply;
 import cloud.cholewa.energy.api.model.ChargeRequest;
 import cloud.cholewa.energy.api.model.ChargeRunReply;
 import cloud.cholewa.energy.api.model.PlannedOutageReply;
+import cloud.cholewa.energy.api.model.InverterSettingsReply;
 import cloud.cholewa.energy.api.model.ReserveReply;
 import cloud.cholewa.energy.api.model.ReserveRequest;
 import cloud.cholewa.energy.charge.ReserveService;
@@ -260,6 +261,38 @@ class EnergyControllerTest {
             .expectBody().json("""
                 {"enabled": true, "level": 80, "until": "2026-11-25T18:00:00", "updatedAt": "2026-11-24T10:00:00",
                  "writeState": "sent", "writeAttemptedAt": "2026-11-24T10:00:02"}""", JsonCompareMode.STRICT);
+    }
+
+    //HAS-518, the contract of the reserve card (HAS-519): what the inverter really has, read from its dongle
+    @Test
+    void should_answer_the_battery_reserve_with_the_settings_of_the_inverter() {
+        when(reserveService.settings()).thenReturn(Mono.just(new ReserveReply(true, 80, null,
+            LocalDateTime.of(2026, 11, 24, 10, 0), "taken", LocalDateTime.of(2026, 11, 24, 10, 0, 2),
+            new InverterSettingsReply("back up", 75, 80, LocalDateTime.of(2026, 11, 26, 9, 12, 30)), true)));
+
+        webTestClient.get().uri("/battery/reserve")
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody().json("""
+                {"enabled": true, "level": 80, "updatedAt": "2026-11-24T10:00:00", "writeState": "taken",
+                 "writeAttemptedAt": "2026-11-24T10:00:02",
+                 "inverter": {"workMode": "back up", "minSoc": 75, "chargeTo": 80, "readAt": "2026-11-26T09:12:30"},
+                 "floorBelowLevel": true}""", JsonCompareMode.STRICT);
+    }
+
+    //the settings of the SOLAX beside the sources and the grid (HAS-518); a percentage not known left out
+    @Test
+    void should_answer_the_status_with_the_work_mode_of_the_inverter() {
+        when(energyStatusService.reply()).thenReturn(Mono.just(new StatusReply(List.of(), GridStateReply.notKnown(),
+            new InverterSettingsReply("other", null, 80, LocalDateTime.of(2026, 11, 26, 9, 6)))));
+
+        webTestClient.get().uri("/status")
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody().json("""
+                {"sources": [], "grid": {"state": null, "frequencyOff": null},
+                 "inverter": {"workMode": "other", "chargeTo": 80, "readAt": "2026-11-26T09:06:00"}}""",
+                JsonCompareMode.STRICT);
     }
 
     @Test

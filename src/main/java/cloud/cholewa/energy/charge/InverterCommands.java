@@ -4,6 +4,7 @@ import cloud.cholewa.energy.error.EnergyException;
 import cloud.cholewa.energy.history.OneAtATime;
 import cloud.cholewa.energy.registry.Inverter;
 import cloud.cholewa.energy.registry.InverterRegistry;
+import cloud.cholewa.energy.solax.SolaxSettingsTracker;
 import cloud.cholewa.energy.solaxcloud.SolaxCloudClient;
 import cloud.cholewa.home.model.InverterBrand;
 import org.springframework.stereotype.Component;
@@ -22,7 +23,8 @@ import java.util.function.Supplier;
 //The commands to the SOLAX through the SolaX cloud (HAS-336) and the one lane every change of a charge runs in: a request
 //of the API and the pass of the watch never change a run at once (OneAtATime). At most one write a minute (the task):
 //every attempt counts, a refused one included - a second within the minute is WRITE_TOO_SOON. The inverter is the SOLAX
-//of the device registry, by its serial number
+//of the device registry, by its serial number. Every write is noted on SolaxSettingsTracker (HAS-518): the settings of the
+//inverter are read from its dongle again a moment after it
 @Component
 public class InverterCommands {
 
@@ -32,6 +34,7 @@ public class InverterCommands {
     private final InverterRegistry inverterRegistry;
     private final ChargeProperties properties;
     private final JsonMapper jsonMapper;
+    private final SolaxSettingsTracker settingsTracker;
     private final Clock clock;
     private final OneAtATime lane = new OneAtATime();
     private final AtomicReference<Instant> lastWriteAt = new AtomicReference<>();
@@ -41,12 +44,14 @@ public class InverterCommands {
         final InverterRegistry inverterRegistry,
         final ChargeProperties properties,
         final JsonMapper jsonMapper,
+        final SolaxSettingsTracker settingsTracker,
         final Clock clock
     ) {
         this.client = client;
         this.inverterRegistry = inverterRegistry;
         this.properties = properties;
         this.jsonMapper = jsonMapper;
+        this.settingsTracker = settingsTracker;
         this.clock = clock;
     }
 
@@ -102,6 +107,7 @@ public class InverterCommands {
             .filter(allowed -> allowed)
             .switchIfEmpty(Mono.error(EnergyException::writeTooSoon))
             .doOnNext(allowed -> lastWriteAt.set(clock.instant()))
-            .flatMap(allowed -> command.get());
+            .flatMap(allowed -> command.get())
+            .doOnNext(requestId -> settingsTracker.wrote());
     }
 }

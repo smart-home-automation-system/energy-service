@@ -10,7 +10,12 @@ import java.time.LocalDateTime;
 //updatedAt - the last change, left out before the first one; writeState - what became of the last write of the
 //standing Self Use: none (never written by the service), pending (to be written - within a minute, or at the end of a
 //charge going on), sent (the SolaX cloud took the command), taken (the inverter is executing it), failed (refused or not
-//carried out, tried again every 10 minutes); writeAttemptedAt - the last attempt, left out before the first one
+//carried out, tried again every 10 minutes); writeAttemptedAt - the last attempt, left out before the first one.
+//Since HAS-518: inverter - the work mode and the Back Up percentages the inverter really has, read from its dongle,
+//left out while not known; floorBelowLevel - true while the reserve holds and the Min SoC of Back Up read from the
+//inverter is below its level (the service cannot raise it - the owner sets it by hand in the SolaX application or
+//SolaxCloud), false while it is not below or no reserve holds, left out while the reserve holds and the Min SoC is not
+//known
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record ReserveReply(
     @JsonInclude(JsonInclude.Include.ALWAYS) boolean enabled,
@@ -18,6 +23,13 @@ public record ReserveReply(
     LocalDateTime until,
     LocalDateTime updatedAt,
     String writeState,
-    LocalDateTime writeAttemptedAt
+    LocalDateTime writeAttemptedAt,
+    InverterSettingsReply inverter,
+    Boolean floorBelowLevel
 ) {
+
+    public ReserveReply(final boolean enabled, final Integer level, final LocalDateTime until,
+                        final LocalDateTime updatedAt, final String writeState, final LocalDateTime writeAttemptedAt) {
+        this(enabled, level, until, updatedAt, writeState, writeAttemptedAt, null, null);
+    }
 }

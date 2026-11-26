@@ -14,7 +14,8 @@ the SOFAR (HAS-330), the balance, history and days (HAS-331), the production wat
 Tauron (HAS-337), the charge of the battery (HAS-336) and its automation before an outage (HAS-338), the daily energy
 summary (HAS-339), the irradiance forecast (HAS-371) and its judgement and calibration (HAS-372), the readings of the
 eLicznik portal (HAS-340), the battery reserve (HAS-494), the grid frequency alert (HAS-503), the history of the voltage, the current and the
-frequency (HAS-506) and the outages seen after the fact (HAS-505), and reviews them in
+frequency (HAS-506), the outages seen after the fact (HAS-505) and the settings of the SOLAX read from its dongle
+(HAS-518), and reviews them in
 IntelliJ.
 
 ## Role in the system
@@ -39,7 +40,7 @@ IntelliJ.
   the return marked for an SMS; the silence of the SOLAX dongle and the grid meter and the overload of a phase
   (HAS-332), Discord only; the alarms of the SOLAX from the SolaX cloud (HAS-329); the faults of the SOFAR (HAS-330); an inverter that does not produce in the sun (HAS-333); the planned outages of Tauron (HAS-337) - those of the
   street of the house and their reminders by SMS; the daily energy summary (HAS-339), an info at 21:30; the grid
-  frequency off its band (HAS-503), Discord only.
+  frequency off its band (HAS-503), Discord only; a battery reserve the inverter does not hold (HAS-518), Discord only.
 - Uses libraries: `cholewa-commons` 2.0.0 since HAS-494 (Boot 4.2.0, `spring-boot-starter-rabbitmq`; 1.14.0 since HAS-340) (the pooled `ConnectionFactory`, the required
   properties, the scheduler pool and `ScheduledPass`, the error contract, `NotificationConnection` and the
   `...Sms` methods of `NotificationPublisher` - HAS-334), `smart-home-sdk` 1.25.0 since HAS-494 (a no-op bump - the registry is read by
@@ -503,8 +504,8 @@ IntelliJ.
     never up** - proven by six writes read back from the dongle: 80 from Self Use left Min SoC at 30; 75 with Min SoC 80
     set by hand gave 75 / 75; 85 gave Charge Battery To 85 and left 75; 75 gave 75 / 75; 80 at a battery of 85 % gave
     Charge Battery To 80 and left 75. So **the floor is raised only by the owner by hand** (the Back Up window of
-    SolaxCloud or the application), and **a reserve lowered and raised again leaves the floor at the lower level** - no
-    code notices it yet. Self Use is not affected: every return showed its Min SoC 10 again. Seen besides: the charge from
+    SolaxCloud or the application), and **a reserve lowered and raised again leaves the floor at the lower level** - told
+    since HAS-518 (the section below). Self Use is not affected: every return showed its Min SoC 10 again. Seen besides: the charge from
     the grid at 5.09 kW at 23:09, 84 % and idle on the grid the next morning; switched off at 10:55 - Self Use back within
     17 s (the battery discharging 1 kW into the house); switched on at 10:56 - idle again. **Not seen yet**: the top-up
     from the panels above the reserve and its use back down to it (no sun in those days).
@@ -513,12 +514,58 @@ IntelliJ.
     them locally**: `optType=ReadSetData` beside `ReadRealTimeData` (the same `pwd`) gives a bare array of 493 numbers,
     steady between reads but for positions 1 and 2. **Pinned by the writes above: 146 is the Min SoC of Back Up, 148 its
     Charge Battery To.** Seen, not pinned: 71 was 161 in Back Up and 160 in Self Use, 151 was 15127 (23:59 as
-    minute * 256 + hour) in Back Up and 0 in Self Use, 144 followed Charge Battery To of Self Use. Which position is the
-    work mode is open - no code reads `ReadSetData` yet (HAS-518).
+    minute * 256 + hour) in Back Up and 0 in Self Use, 144 followed Charge Battery To of Self Use. The work mode was pinned
+    on 2026-11-26 and the settings are read since HAS-518 - the section below.
   - **Other ways to the Min SoC, none tried** (searched 2026-11-25): the community integrations of the Open API send the
     body this service sends; SolaX says a Min SoC is taken only at least 2 % below the charge of the battery - 80 at 85 %
     was still not taken, so that is not the cause here. The dongle is reported to take writes (`optType=setReg`) and the
     inverter has a Modbus register of the Back Up Min SoC - both are writes straight to the inverter, the owner's call.
+- **The settings of the SOLAX and a reserve it does not hold** (HAS-518, packages `solax` and `charge`) - what is easy to
+  break:
+  - **The map of `ReadSetData`** (`SetData`, pinned by `SetDataTest` on `src/test/resources/solax-settings/` - answers of
+    the real dongle, bare arrays of numbers with nothing of the house in them): **71 the work mode - 160 Self Use, 161
+    Back Up, 164 Feed-in Priority** (pinned with the owner on 2026-11-26: Back Up to Feed-in Priority in the SolaX
+    application and back, a read after each; Self Use seen on 2026-11-25), **146 the Min SoC of Back Up, 148 its Charge
+    Battery To**. Any other code of 71 is `WorkMode.OTHER` (`other` on the wire, logged with its code) - certainly not Back
+    Up, never taken for one of the three; Manual, TOU and Peak Shaving were never switched on. **An array that is not 493
+    numbers is a failed read**, never the same indexes of another firmware; a percentage outside 0 - 100 is not known.
+    Seen, not read: 344 went 10 to 11 with the change to Feed-in Priority (the Min SOC its screen showed, nobody set it)
+    and stayed 11 back in Back Up - the application seems to send the settings of a mode with the change; the Back Up
+    percentages survived both changes (75 / 80).
+  - `SolaxClient.readSetData` - the same address and `pwd` as the real-time read; **the two reads of the dongle go one
+    after the other** (`OneAtATime` inside the client - two readers on their own schedules, a small device).
+  - `SolaxSettingsReader` - a pass every 10 s (bounded at 9 s) that asks the dongle only when due: none yet, the last
+    attempt `energy.solax.settings.interval` (PT5M) ago, or a write of the service `after-write` (PT20S) ago and not read
+    since - `InverterCommands.write` notes every command the cloud took on `SolaxSettingsTracker`. An attempt counts
+    whether it succeeded, so a silent dongle is asked every interval; one WARN an hour per kind (`FailureLog`). A pass
+    cut off by its bound while it waited behind the real-time read is no attempt (`doOnCancel`) - the read after a write
+    is not lost. `stale-after` is at least twice the interval (checked at the start).
+    `SolaxSettingsTracker.current()` answers the settings only for `stale-after` (PT15M) - three failed reads make them
+    not known, never the settings of an hour ago.
+  - **The API**: `inverter {workMode, minSoc, chargeTo, readAt}` in `GET /battery/reserve` and `GET /status`, left out
+    while not known; `floorBelowLevel` of the reserve - `false` without a reserve in force, `null` (left out) while it
+    holds and the Min SoC is not known. It compares the Min SoC alone; the work mode is beside it in `inverter` - the
+    contract of the dashboard task HAS-519.
+  - `ReserveFloorRules` (pure, the words pinned whole by `ReserveFloorRulesTest`) and `ReserveFloorWatch` (every minute,
+    bounded at 50 s, reads only - outside the lane of the commands, its three queries one after the other): the reserve
+    in force with the inverter out of Back Up, or its Min SoC below the level, in every pass for
+    `energy.charge.floor.warn-after` (PT10M) is one warning (`publishReminder` - level warn, no SMS), a reminder every
+    `reminder-every` (PT1H), an info once it holds again or the reserve is switched off. **Not judged** - the count
+    starts anew, an open episode stays and is not reminded: the settings not known, a write of the reserve `pending` or
+    `failed` (the reserve tells that itself), `none`, and **a charge open or being ended** (the inverter runs its Self Use
+    until the end writes the reserve back - without this every charge longer than ten minutes would warn). **Settings
+    read before the last write of the standing work mode are not judged either** (`write_attempted_at` of the reserve,
+    the /code-review of HAS-518): with the read after a write failing, the mode from before it stayed "fresh" for a
+    quarter of an hour and would have warned of a Self Use the inverter had left.
+  - Known and left: an episode open while nothing is judged for long (a Back Up Min SoC the dongle answers out of
+    0 - 100, a write that stays `failed`) stays open without a reminder; a save that committed but answered an error
+    makes the next pass fail on the unique index until a restart - as in `FrequencyWatch`, which this copies.
+  - `source_alert` kind `reserve`, source `solax` (V20), **the table follows the broker** as the frequency watch: a row
+    only once its notice was published, a told row the database did not take held and stored first by the next pass. A
+    new kind reaches `GET /alerts` by itself - the dashboard prints it as it comes until HAS-519 words it.
+  - **Seen on the real inverter** (2026-11-26, 0.22.0 running, the reads by hand): Back Up 75 / 80 before, Feed-in
+    Priority at 09:06 (71 = 164), Back Up again at 09:12 with the Min SoC set to 80 by the owner (146 = 80). The warning
+    and its return on a real mismatch are still to be seen (the DoD of HAS-518).
 - **The planned outages of Tauron** (HAS-337, package `tauron`) - what is easy to break:
   - **The API** (the one of the Home Assistant integration Eales/tauron-dystrybucja, checked 2026-11-03): `cities?partName=`,
     `streets?partName=&ownerGAID=<the GAID of the town>` (not its OwnerGAID - that answers an empty list), `outages/address`
