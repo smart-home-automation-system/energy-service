@@ -1,6 +1,7 @@
 package cloud.cholewa.energy.status;
 
 import cloud.cholewa.energy.api.model.GridStateReply;
+import cloud.cholewa.energy.api.model.InverterSettingsReply;
 import cloud.cholewa.energy.api.model.SourceStatusReply;
 import cloud.cholewa.energy.meter.GridMeterTracker;
 import cloud.cholewa.energy.frequency.FrequencyState;
@@ -10,8 +11,11 @@ import cloud.cholewa.energy.solax.SolaxSamples;
 import cloud.cholewa.energy.sofar.SofarSamples;
 import cloud.cholewa.energy.sofar.SofarState;
 import cloud.cholewa.energy.sofar.SofarTracker;
+import cloud.cholewa.energy.solax.SolaxSettings;
+import cloud.cholewa.energy.solax.SolaxSettingsTracker;
 import cloud.cholewa.energy.solax.SolaxState;
 import cloud.cholewa.energy.solax.SolaxTracker;
+import cloud.cholewa.energy.solax.WorkMode;
 import cloud.cholewa.energy.solaxcloud.SolaxCloudState;
 import cloud.cholewa.energy.solaxcloud.SolaxCloudTracker;
 import cloud.cholewa.shelly.model.EmDataStatus;
@@ -22,6 +26,7 @@ import reactor.test.StepVerifier;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -35,14 +40,39 @@ class EnergyStatusServiceTest {
     private final SofarTracker sofarTracker = mock(SofarTracker.class);
     private final GridOutageService gridOutageService = mock(GridOutageService.class);
     private final FrequencyState frequencyState = mock(FrequencyState.class);
+    private final SolaxSettingsTracker settingsTracker = mock(SolaxSettingsTracker.class);
     private final EnergyStatusService energyStatusService = new EnergyStatusService(tracker, solaxTracker,
-        cloudTracker, sofarTracker, gridOutageService, frequencyState);
+        cloudTracker, sofarTracker, gridOutageService, frequencyState, settingsTracker);
 
     @BeforeEach
     void setUp() {
         when(solaxTracker.current()).thenReturn(new SolaxState(null, null, null, null));
         when(cloudTracker.current()).thenReturn(new SolaxCloudState(null, null, null, null));
         when(sofarTracker.current()).thenReturn(new SofarState(null, null, null, null));
+        when(settingsTracker.current()).thenReturn(Optional.empty());
+    }
+
+    //the settings of the SOLAX as its dongle last answered them, left out while not known (HAS-518)
+    @Test
+    void should_answer_the_settings_of_the_inverter_while_they_are_known() {
+        when(tracker.current()).thenReturn(new GridMeterState(null, null, null, null, null, null));
+        when(gridOutageService.grid()).thenReturn(GridStateReply.notKnown());
+        when(frequencyState.current()).thenReturn(new FrequencyState.Snapshot(null, null));
+        when(settingsTracker.current()).thenReturn(Optional.empty());
+
+        energyStatusService.reply()
+            .as(StepVerifier::create)
+            .assertNext(reply -> assertThat(reply.inverter()).isNull())
+            .verifyComplete();
+
+        when(settingsTracker.current()).thenReturn(Optional.of(new SolaxSettingsTracker.Read(
+            new SolaxSettings(164, WorkMode.FEED_IN_PRIORITY, 75, 80), LocalDateTime.of(2026, 11, 26, 9, 6))));
+
+        energyStatusService.reply()
+            .as(StepVerifier::create)
+            .assertNext(reply -> assertThat(reply.inverter()).isEqualTo(new InverterSettingsReply(
+                "feed-in priority", 75, 80, LocalDateTime.of(2026, 11, 26, 9, 6))))
+            .verifyComplete();
     }
 
     //the grid of the outage watch with the frequency of the last pass of the frequency watch (HAS-503)

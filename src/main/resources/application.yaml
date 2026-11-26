@@ -74,6 +74,13 @@ energy:
     interval: PT15S
     stale-after: PT1M
     battery-capacity: 26.5
+    # the settings of the inverter from the same dongle (HAS-518, optType=ReadSetData): its work mode and the Min SoC
+    # and Charge Battery To of Back Up, read every interval (a bare number is minutes) and after-write (seconds) after
+    # a write of the service to the inverter; read longer ago than stale-after they are not known
+    settings:
+      interval: PT5M
+      after-write: PT20S
+      stale-after: PT15M
     # the SolaX Developer Platform (HAS-329): the backup of the dongle (the inverter and its battery every interval), the
     # alarms of the plant every alarm-interval; a cloud answer older than stale-after is not served. The application of
     # the owner and the plant from the manifest (the secret energy) - no default
@@ -169,6 +176,11 @@ energy:
       charge-upper-soc: 10
       discharge-start: "00:00"
       discharge-end: "23:59"
+    # a battery reserve the inverter does not hold (HAS-518): out of Back Up, or its Min SoC below the level of the
+    # reserve, for warn-after is a warning, reminded every reminder-every (a bare number is minutes)
+    floor:
+      warn-after: PT10M
+      reminder-every: PT1H
   # the automatic charge before a planned outage (HAS-478): a failed run is tried again after the pause, at most so often
   automation:
     max-attempts: 3

@@ -1,5 +1,6 @@
 package cloud.cholewa.energy.status;
 
+import cloud.cholewa.energy.api.model.InverterSettingsReply;
 import cloud.cholewa.energy.api.model.SourceStatusReply;
 import cloud.cholewa.energy.api.model.StatusReply;
 import cloud.cholewa.energy.frequency.FrequencyState;
@@ -8,6 +9,7 @@ import cloud.cholewa.energy.meter.GridMeterTracker;
 import cloud.cholewa.energy.outage.GridOutageService;
 import cloud.cholewa.energy.sofar.SofarState;
 import cloud.cholewa.energy.sofar.SofarTracker;
+import cloud.cholewa.energy.solax.SolaxSettingsTracker;
 import cloud.cholewa.energy.solax.SolaxState;
 import cloud.cholewa.energy.solax.SolaxTracker;
 import cloud.cholewa.energy.solaxcloud.SolaxCloudState;
@@ -23,7 +25,8 @@ import java.util.List;
 //(its last will is false, a reading true) and the time of its newest reading. The SOLAX since HAS-328: whether the last
 //read of its dongle succeeded and the time of its last reading. The SolaX cloud since HAS-329. The SOFAR since HAS-330:
 //whether the last read of the Solarman cloud brought a fresh reading and the time its logger collected it. Since HAS-334
-//with the grid as the SOLAX sees it, since HAS-503 with the frequency of the grid meter
+//with the grid as the SOLAX sees it, since HAS-503 with the frequency of the grid meter, since HAS-518 with the settings
+//of the SOLAX read from its dongle
 @Service
 @RequiredArgsConstructor
 public class EnergyStatusService {
@@ -34,11 +37,19 @@ public class EnergyStatusService {
     private final SofarTracker sofarTracker;
     private final GridOutageService gridOutageService;
     private final FrequencyState frequencyState;
+    private final SolaxSettingsTracker settingsTracker;
 
-    //the answer of GET /status: the sources and the grid with its frequency
+    //the answer of GET /status: the sources, the grid with its frequency and the settings of the SOLAX
     public Mono<StatusReply> reply() {
         return status().zipWith(Mono.fromSupplier(frequencyState::current), (sources, frequency) ->
-            new StatusReply(sources, gridOutageService.grid().withFrequency(frequency.hz(), frequency.off())));
+            new StatusReply(sources, gridOutageService.grid().withFrequency(frequency.hz(), frequency.off()),
+                settingsTracker.current().map(EnergyStatusService::inverter).orElse(null)));
+    }
+
+    //the settings of the SOLAX in the words of the API - of the battery reserve too
+    public static InverterSettingsReply inverter(final SolaxSettingsTracker.Read read) {
+        return new InverterSettingsReply(read.settings().workMode().wireName(), read.settings().backUpMinSoc(),
+            read.settings().backUpChargeTo(), read.readAt());
     }
 
     public Mono<List<SourceStatusReply>> status() {

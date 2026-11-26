@@ -91,6 +91,35 @@ class SolaxClientTest {
             .verify();
     }
 
+    //HAS-518: the settings of the inverter, the same address and registration number
+    @Test
+    void should_ask_the_dongle_for_its_settings_with_the_registration_number() throws InterruptedException {
+        server.enqueue(html(sample(SetDataTest.BACK_UP)));
+
+        client.readSetData(solax(address())).as(StepVerifier::create)
+            .expectNext(new SolaxSettings(161, WorkMode.BACK_UP, 80, 80))
+            .verifyComplete();
+
+        final RecordedRequest request = server.takeRequest();
+        assertThat(request.getMethod()).isEqualTo("POST");
+        assertThat(request.getUrl().encodedPath()).isEqualTo("/");
+        assertThat(request.getBody().utf8()).isEqualTo("optType=ReadSetData&pwd=" + SolaxSamples.REGISTRATION);
+    }
+
+    @Test
+    void should_fail_on_settings_of_a_refused_registration_number_and_of_a_silent_dongle() {
+        server.enqueue(html("0:code,message:\"failed\"}"));
+
+        client.readSetData(solax(address())).as(StepVerifier::create)
+            .expectError(RegistrationRefusedException.class)
+            .verify();
+        client.readSetData(solax("localhost:1")).as(StepVerifier::create)
+            .expectErrorSatisfies(failure -> assertThat(failure)
+                .isInstanceOf(SolaxCallException.class)
+                .hasMessageStartingWith("The dongle did not answer"))
+            .verify();
+    }
+
     private static MockResponse html(final String body) {
         return new MockResponse.Builder().addHeader("Content-Type", "text/html").body(body).build();
     }

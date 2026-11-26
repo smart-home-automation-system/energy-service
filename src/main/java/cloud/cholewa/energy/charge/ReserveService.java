@@ -10,7 +10,10 @@ import cloud.cholewa.energy.database.EnergyReserveRepository;
 import cloud.cholewa.energy.error.EnergyError;
 import cloud.cholewa.energy.error.EnergyException;
 import cloud.cholewa.energy.solax.FailureLog;
+import cloud.cholewa.energy.solax.SolaxSettings;
+import cloud.cholewa.energy.solax.SolaxSettingsTracker;
 import cloud.cholewa.energy.solaxcloud.SolaxCloudException;
+import cloud.cholewa.energy.status.EnergyStatusService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
@@ -32,7 +35,9 @@ import java.util.concurrent.atomic.AtomicReference;
 //- Every pass (ReserveWatch, a minute): a reserve whose until was reached is switched off and told; a sent command is
 //  followed as a charge is (status 4 taken; 1, 2, 5, 6 failed); a pending write is sent, a failed one again after 10
 //  minutes. A failure is told once, as an alert, and its end as an info.
-//Every change runs in the lane of InverterCommands, with the charges
+//Every change runs in the lane of InverterCommands, with the charges.
+//Since HAS-518 the answer carries what the inverter really has - its work mode and the Back Up percentages read from
+//its dongle (SolaxSettingsTracker) - and whether its Min SoC is below the level of the reserve
 @Slf4j
 @Service
 public class ReserveService {
@@ -51,6 +56,7 @@ public class ReserveService {
     private final InverterCommands commands;
     private final NotificationPublisher notificationPublisher;
     private final ChargeProperties properties;
+    private final SolaxSettingsTracker settingsTracker;
     private final Clock clock;
     private final FailureLog failureLog;
     //the charge a pending write was last noted to wait on - the INFO once a run, not every pass
@@ -62,6 +68,7 @@ public class ReserveService {
         final InverterCommands commands,
         final NotificationPublisher notificationPublisher,
         final ChargeProperties properties,
+        final SolaxSettingsTracker settingsTracker,
         final Clock clock
     ) {
         this.repository = repository;
@@ -69,6 +76,7 @@ public class ReserveService {
         this.commands = commands;
         this.notificationPublisher = notificationPublisher;
         this.properties = properties;
+        this.settingsTracker = settingsTracker;
         this.clock = clock;
         this.failureLog = new FailureLog(log, clock);
     }
@@ -78,7 +86,7 @@ public class ReserveService {
     }
 
     public Mono<ReserveReply> settings() {
-        return read().map(ReserveService::reply);
+        return read().map(this::reply);
     }
 
     public Mono<ReserveReply> replace(final ReserveRequest request) {
@@ -95,7 +103,7 @@ public class ReserveService {
                 .doOnNext(saved -> log.info("The battery reserve set: {}, {} %, until {}",
                     saved.enabled() ? "on" : "off", saved.level(), saved.until()))
                 .flatMap(this::writeIfDue))
-            .map(ReserveService::reply);
+            .map(this::reply);
     }
 
     //the standing Self Use now: the reserve while it holds, the baseline otherwise
@@ -275,13 +283,18 @@ public class ReserveService {
                 "The alert of the battery reserve was not published - {}: {}", failure.toString(), text)));
     }
 
-    static ReserveReply reply(final EnergyReserveEntity row) {
+    //the setting with what the inverter has now, as last read from its dongle
+    ReserveReply reply(final EnergyReserveEntity row) {
+        final Optional<SolaxSettingsTracker.Read> read = settingsTracker.current();
+        final Optional<SolaxSettings> settings = read.map(SolaxSettingsTracker.Read::settings);
         return new ReserveReply(row.enabled(), row.level(), row.until(), row.updatedAt(), row.writeOutcome(),
-            row.writeAttemptedAt());
+            row.writeAttemptedAt(), read.map(EnergyStatusService::inverter).orElse(null),
+            ReserveFloorRules.floorBelowLevel(ReserveRules.inForce(row.enabled(), row.until(), now()), row.level(),
+                settings));
     }
 
     //a charge open or being ended: its end writes the standing Self Use
-    private static boolean busy(final BatteryChargeRunEntity run) {
+    static boolean busy(final BatteryChargeRunEntity run) {
         return run.open() || run.restorePending();
     }
 }

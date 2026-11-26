@@ -1,5 +1,6 @@
 package cloud.cholewa.energy.solax;
 
+import cloud.cholewa.energy.history.OneAtATime;
 import cloud.cholewa.energy.registry.Inverter;
 import io.netty.channel.ChannelOption;
 import org.springframework.http.HttpStatusCode;
@@ -12,11 +13,14 @@ import reactor.netty.http.client.HttpClient;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.time.Duration;
+import java.util.function.Function;
 
 //The local API of the dongle of the SOLAX (HAS-328): POST / with optType=ReadRealTimeData and the registration number
 //of the dongle as pwd, form-encoded. Built from the injected builder, so the call is traced and logged by Logbook;
 //3 s to connect, 5 s for an answer, nothing retried - the next read comes with the next interval. Any failure, a refused number
-//included, is an error of the Mono (SolaxCallException); the reader decides what is logged
+//included, is an error of the Mono (SolaxCallException); the reader decides what is logged.
+//Since HAS-518 optType=ReadSetData too - the settings of the inverter, the same address and pwd. The two reads go one
+//after the other (OneAtATime): the dongle is small, and two readers ask it on their own schedules
 @Component
 public class SolaxClient {
 
@@ -25,6 +29,7 @@ public class SolaxClient {
 
     private final WebClient webClient;
     private final JsonMapper jsonMapper;
+    private final OneAtATime oneAtATime = new OneAtATime();
 
     public SolaxClient(final WebClient.Builder webClientBuilder, final JsonMapper jsonMapper) {
         //a new connection for every read: the dongle is a small device, and a kept-alive socket it dropped in the
@@ -39,17 +44,26 @@ public class SolaxClient {
     }
 
     public Mono<SolaxReading> read(final Inverter inverter) {
-        return webClient.post()
+        return ask(inverter, "ReadRealTimeData", body -> Type33.parse(body, jsonMapper));
+    }
+
+    //the settings of the inverter (HAS-518)
+    public Mono<SolaxSettings> readSetData(final Inverter inverter) {
+        return ask(inverter, "ReadSetData", body -> SetData.parse(body, jsonMapper));
+    }
+
+    private <T> Mono<T> ask(final Inverter inverter, final String optType, final Function<String, T> parse) {
+        return oneAtATime.run(webClient.post()
             .uri("http://" + inverter.address() + "/")
-            .body(BodyInserters.fromFormData("optType", "ReadRealTimeData")
+            .body(BodyInserters.fromFormData("optType", optType)
                 .with("pwd", inverter.registrationNumber()))
             .retrieve()
             .onStatus(HttpStatusCode::isError, response ->
                 Mono.just(new SolaxCallException("The dongle answered " + response.statusCode().value())))
             .bodyToMono(String.class)
             .defaultIfEmpty("")
-            .map(body -> Type33.parse(body, jsonMapper))
+            .map(parse)
             .onErrorMap(failure -> !(failure instanceof SolaxCallException),
-                failure -> new SolaxCallException("The dongle did not answer: " + failure));
+                failure -> new SolaxCallException("The dongle did not answer: " + failure)));
     }
 }

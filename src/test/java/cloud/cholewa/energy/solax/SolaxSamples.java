@@ -65,6 +65,11 @@ public final class SolaxSamples {
             "192.0.2.204", null, 1234567890L, null);
     }
 
+    //the settings of the SOLAX as its reader hands them to the tracker (HAS-518), for the tests of other packages
+    public static void settings(final SolaxSettingsTracker tracker, final SolaxSettings settings) {
+        tracker.read(settings);
+    }
+
     //a clock that a test moves on
     public static final class MovableClock extends Clock {
 
