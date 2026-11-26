@@ -66,10 +66,9 @@ final class ReserveSocRules {
 
     //held of GET /battery/reserve: left out (null) without a reserve in force or while the state of charge is not known
     static Boolean held(final boolean inForce, final Integer level, final Optional<Double> soc, final int tolerance) {
-        if (!inForce) {
-            return null;
-        }
-        return soc.map(known -> !below(known, level, tolerance)).orElse(null);
+        return soc.filter(known -> inForce)
+            .map(known -> !below(known, level, tolerance))
+            .orElse(null);
     }
 
     private static boolean below(final double soc, final int level, final int tolerance) {
