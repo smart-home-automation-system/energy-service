@@ -14,8 +14,8 @@ the SOFAR (HAS-330), the balance, history and days (HAS-331), the production wat
 Tauron (HAS-337), the charge of the battery (HAS-336) and its automation before an outage (HAS-338), the daily energy
 summary (HAS-339), the irradiance forecast (HAS-371) and its judgement and calibration (HAS-372), the readings of the
 eLicznik portal (HAS-340), the battery reserve (HAS-494), the grid frequency alert (HAS-503), the history of the voltage, the current and the
-frequency (HAS-506), the outages seen after the fact (HAS-505) and the settings of the SOLAX read from its dongle
-(HAS-518), and reviews them in
+frequency (HAS-506), the outages seen after the fact (HAS-505), the settings of the SOLAX read from its dongle
+(HAS-518) and the battery below its reserve (HAS-495), and reviews them in
 IntelliJ.
 
 ## Role in the system
@@ -40,7 +40,8 @@ IntelliJ.
   the return marked for an SMS; the silence of the SOLAX dongle and the grid meter and the overload of a phase
   (HAS-332), Discord only; the alarms of the SOLAX from the SolaX cloud (HAS-329); the faults of the SOFAR (HAS-330); an inverter that does not produce in the sun (HAS-333); the planned outages of Tauron (HAS-337) - those of the
   street of the house and their reminders by SMS; the daily energy summary (HAS-339), an info at 21:30; the grid
-  frequency off its band (HAS-503), Discord only; a battery reserve the inverter does not hold (HAS-518), Discord only.
+  frequency off its band (HAS-503), Discord only; a battery reserve the inverter does not hold (HAS-518) and the battery below its
+  reserve (HAS-495), Discord only.
 - Uses libraries: `cholewa-commons` 2.0.0 since HAS-494 (Boot 4.2.0, `spring-boot-starter-rabbitmq`; 1.14.0 since HAS-340) (the pooled `ConnectionFactory`, the required
   properties, the scheduler pool and `ScheduledPass`, the error contract, `NotificationConnection` and the
   `...Sms` methods of `NotificationPublisher` - HAS-334), `smart-home-sdk` 1.25.0 since HAS-494 (a no-op bump - the registry is read by
@@ -570,6 +571,31 @@ IntelliJ.
     Charge Battery To 80; the first judged pass at 09:57, the warning on Discord at 10:07:11 and the episode in
     `GET /alerts`; the owner set Min SoC to 80 in the SolaX application, read at 10:16:47, the info of the return at
     10:17:12.
+- **The battery below its reserve** (HAS-495, epic HAS-493, package `charge`) - what is easy to break:
+  - **The state of charge against the reserve, beside the settings of HAS-518**: the settings say what the inverter was
+    told, the battery whether it does it - a floor the inverter ignores, or settings not known while the battery runs
+    down. `ReserveSocRules` (pure, the words pinned whole by `ReserveSocRulesTest`) and `ReserveSocWatch` (every minute,
+    bounded at 50 s, reads only - outside the lane of the commands, its queries one after the other): the battery below
+    the level less `energy.charge.soc.tolerance` (5 %) **and not charging** (`BatteryDirection.of` its power, the dead
+    band of the dashboard) in every pass for `warn-after` (PT30M) is one warning (`publishReminder` - level warn, no
+    SMS), a reminder every `reminder-every` (PT1H), an info once it is back at the level less the tolerance or the
+    reserve is switched off.
+  - **Not judged** - the count starts anew, an open episode stays and is not reminded: **an outage of the grid** (an open
+    `grid_outage` - in EPS the drop is the purpose), a charge open or being ended, a write of the reserve not `sent` or
+    `taken` (`none`, `pending`, `failed` - the reserve tells that itself), **an episode of the floor open** (source
+    `solax` - a reserve raised above the Min SoC of the inverter idles the battery below it, one cause told once, by the
+    floor; the /code-review of HAS-495), the battery stale or without a SOC, and **the
+    battery below the reserve but charging** - a reserve switched on below its level is brought up from the grid by the
+    inverter, at 5 kW about three hours from 20 to 80 %, and must not warn. Charging below the reserve neither reminds
+    nor closes an open episode; it closes once the battery is back.
+  - `source_alert` kind `reserve`, **source `battery`** (V21 - the task planned V17 and the kind before HAS-518 took
+    both; the source keeps the two episodes apart, one open row each by the unique index of V6), the table follows the
+    broker as in `ReserveFloorWatch`, which this copies.
+  - **The API**: `held` in `GET /battery/reserve` - true at the level less the tolerance or above, false below it (also
+    in an outage, where using it is the purpose), left out without a reserve in force or while the SOC is not known; a
+    battery that cannot be read leaves it out and never fails the answer. `ReserveService` reads the battery for it
+    (`BatteryService`, the dongle or the SolaX cloud standing for it).
+  - **Proven by a real event, never staged** (DoD): not seen yet.
 - **The planned outages of Tauron** (HAS-337, package `tauron`) - what is easy to break:
   - **The API** (the one of the Home Assistant integration Eales/tauron-dystrybucja, checked 2026-11-03): `cities?partName=`,
     `streets?partName=&ownerGAID=<the GAID of the town>` (not its OwnerGAID - that answers an empty list), `outages/address`

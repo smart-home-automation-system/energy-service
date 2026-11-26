@@ -181,6 +181,13 @@ energy:
     floor:
       warn-after: PT10M
       reminder-every: PT1H
+    # the battery below its reserve (HAS-495): below the level less tolerance (%) and not charging, with the grid
+    # present and no charge going on, for warn-after is a warning, reminded every reminder-every (a bare number is
+    # minutes)
+    soc:
+      tolerance: 5
+      warn-after: PT30M
+      reminder-every: PT1H
   # the automatic charge before a planned outage (HAS-478): a failed run is tried again after the pause, at most so often
   automation:
     max-attempts: 3

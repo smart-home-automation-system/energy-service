@@ -304,6 +304,25 @@ class HistoryRepositoryTest {
         execute("DELETE FROM source_alert");
     }
 
+    //V21 (HAS-495): the battery may have one open episode of its reserve, without a detail, beside the one of the SOLAX;
+    //no other kind of the battery
+    @Test
+    void should_take_a_reserve_episode_of_the_battery_beside_the_one_of_the_solax() {
+        execute("DELETE FROM source_alert");
+        databaseClient.sql("INSERT INTO source_alert (source, kind, opened_at) VALUES ('solax', 'reserve', now())")
+            .fetch().rowsUpdated().as(StepVerifier::create).expectNext(1L).verifyComplete();
+        databaseClient.sql("INSERT INTO source_alert (source, kind, opened_at) VALUES ('battery', 'reserve', now())")
+            .fetch().rowsUpdated().as(StepVerifier::create).expectNext(1L).verifyComplete();
+        databaseClient.sql("INSERT INTO source_alert (source, kind, opened_at) VALUES ('battery', 'silent', now())")
+            .fetch().rowsUpdated().as(StepVerifier::create).expectError().verify();
+        databaseClient.sql("INSERT INTO source_alert (source, kind, opened_at, detail) VALUES ('battery', 'reserve', "
+                + "now(), 'x')")
+            .fetch().rowsUpdated().as(StepVerifier::create).expectError().verify();
+        databaseClient.sql("INSERT INTO source_alert (source, kind, opened_at) VALUES ('battery', 'reserve', now())")
+            .fetch().rowsUpdated().as(StepVerifier::create).expectError().verify();
+        execute("DELETE FROM source_alert");
+    }
+
     @Test
     void should_store_a_day_once() {
         final EnergyDayEntity day = new EnergyDayEntity(LocalDate.of(2026, 11, 1), 4.0, 1.0, 5.0, 11.2, 0.0, 1.0,

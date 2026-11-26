@@ -15,7 +15,10 @@ import java.time.LocalDateTime;
 //left out while not known; floorBelowLevel - true while the reserve holds and the Min SoC of Back Up read from the
 //inverter is below its level (the service cannot raise it - the owner sets it by hand in the SolaX application or
 //SolaxCloud), false while it is not below or no reserve holds, left out while the reserve holds and the Min SoC is not
-//known
+//known.
+//Since HAS-495: held - true while the reserve holds and the battery is at its level less the tolerance
+//(energy.charge.soc.tolerance, 5 %) or above, false while it is below - also in an outage of the grid, where using it is
+//the purpose -, left out without a reserve in force or while the state of charge is not known
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record ReserveReply(
     @JsonInclude(JsonInclude.Include.ALWAYS) boolean enabled,
@@ -25,11 +28,12 @@ public record ReserveReply(
     String writeState,
     LocalDateTime writeAttemptedAt,
     InverterSettingsReply inverter,
-    Boolean floorBelowLevel
+    Boolean floorBelowLevel,
+    Boolean held
 ) {
 
     public ReserveReply(final boolean enabled, final Integer level, final LocalDateTime until,
                         final LocalDateTime updatedAt, final String writeState, final LocalDateTime writeAttemptedAt) {
-        this(enabled, level, until, updatedAt, writeState, writeAttemptedAt, null, null);
+        this(enabled, level, until, updatedAt, writeState, writeAttemptedAt, null, null, null);
     }
 }

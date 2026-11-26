@@ -268,7 +268,7 @@ class EnergyControllerTest {
     void should_answer_the_battery_reserve_with_the_settings_of_the_inverter() {
         when(reserveService.settings()).thenReturn(Mono.just(new ReserveReply(true, 80, null,
             LocalDateTime.of(2026, 11, 24, 10, 0), "taken", LocalDateTime.of(2026, 11, 24, 10, 0, 2),
-            new InverterSettingsReply("back up", 75, 80, LocalDateTime.of(2026, 11, 26, 9, 12, 30)), true)));
+            new InverterSettingsReply("back up", 75, 80, LocalDateTime.of(2026, 11, 26, 9, 12, 30)), true, null)));
 
         webTestClient.get().uri("/battery/reserve")
             .exchange()
@@ -278,6 +278,21 @@ class EnergyControllerTest {
                  "writeAttemptedAt": "2026-11-24T10:00:02",
                  "inverter": {"workMode": "back up", "minSoc": 75, "chargeTo": 80, "readAt": "2026-11-26T09:12:30"},
                  "floorBelowLevel": true}""", JsonCompareMode.STRICT);
+    }
+
+    //HAS-495: whether the battery itself is at the reserve
+    @Test
+    void should_answer_the_battery_reserve_with_whether_the_battery_holds_it() {
+        when(reserveService.settings()).thenReturn(Mono.just(new ReserveReply(true, 80, null,
+            LocalDateTime.of(2026, 11, 24, 10, 0), "taken", LocalDateTime.of(2026, 11, 24, 10, 0, 2), null, null,
+            false)));
+
+        webTestClient.get().uri("/battery/reserve")
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody().json("""
+                {"enabled": true, "level": 80, "updatedAt": "2026-11-24T10:00:00", "writeState": "taken",
+                 "writeAttemptedAt": "2026-11-24T10:00:02", "held": false}""", JsonCompareMode.STRICT);
     }
 
     //the settings of the SOLAX beside the sources and the grid (HAS-518); a percentage not known left out

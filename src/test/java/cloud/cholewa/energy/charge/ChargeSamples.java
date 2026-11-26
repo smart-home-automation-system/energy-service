@@ -17,6 +17,8 @@ final class ChargeSamples {
         LocalTime.of(23, 59));
     static final ChargeProperties PROPERTIES = new ChargeProperties(5.0, Duration.ofHours(1), Duration.ofHours(23),
         Duration.ofMinutes(2), 1000, BASELINE);
+    //the warning of a battery below its reserve as application.yaml sets it (HAS-495)
+    static final ReserveSocProperties SOC = new ReserveSocProperties(5, Duration.ofMinutes(30), Duration.ofHours(1));
 
     private ChargeSamples() {
     }
