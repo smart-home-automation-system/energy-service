@@ -68,7 +68,7 @@ final class ChargeFixture {
         commands = new InverterCommands(client, registry, ChargeSamples.PROPERTIES, SolaxSamples.JSON, settings,
             clock);
         reserve = new ReserveService(reserves, repository, commands, publisher, ChargeSamples.PROPERTIES, settings,
-            clock);
+            batteryService, ChargeSamples.SOC, clock);
         service = new ChargeService(repository, commands, batteryService, gridService, publisher,
             ChargeSamples.PROPERTIES, solax, flag, outages, new OutageLane(), plan, reserve, clock);
         watch = new ChargeWatch(repository, commands, service, ChargeSamples.PROPERTIES, flag, clock);
