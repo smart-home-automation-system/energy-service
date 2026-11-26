@@ -564,8 +564,12 @@ IntelliJ.
     only once its notice was published, a told row the database did not take held and stored first by the next pass. A
     new kind reaches `GET /alerts` by itself - the dashboard prints it as it comes until HAS-519 words it.
   - **Seen on the real inverter** (2026-11-26, 0.22.0 running, the reads by hand): Back Up 75 / 80 before, Feed-in
-    Priority at 09:06 (71 = 164), Back Up again at 09:12 with the Min SoC set to 80 by the owner (146 = 80). The warning
-    and its return on a real mismatch are still to be seen (the DoD of HAS-518).
+    Priority at 09:06 (71 = 164), Back Up again at 09:12 with the Min SoC set to 80 by the owner (146 = 80). **The
+    warning and its return on a real mismatch** (0.23.0, the same day): the reserve set to 75 % at 09:55 and back to
+    80 % at 09:56 from the dashboard - the reads 27 s and 23 s after the writes showed 75 / 75, then Min SoC 75 with
+    Charge Battery To 80; the first judged pass at 09:57, the warning on Discord at 10:07:11 and the episode in
+    `GET /alerts`; the owner set Min SoC to 80 in the SolaX application, read at 10:16:47, the info of the return at
+    10:17:12.
 - **The planned outages of Tauron** (HAS-337, package `tauron`) - what is easy to break:
   - **The API** (the one of the Home Assistant integration Eales/tauron-dystrybucja, checked 2026-11-03): `cities?partName=`,
     `streets?partName=&ownerGAID=<the GAID of the town>` (not its OwnerGAID - that answers an empty list), `outages/address`
