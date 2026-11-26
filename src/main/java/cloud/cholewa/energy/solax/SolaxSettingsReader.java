@@ -19,7 +19,8 @@ import java.util.concurrent.atomic.AtomicReference;
 //after-write ago and not read since (the work mode and the Back Up percentages the inverter really took). Nothing is
 //read while the registry has no SOLAX with an address and a registration number. A failed read keeps the last settings,
 //which go stale by themselves; its WARN is one an hour per kind of failure (FailureLog). An attempt counts whether it
-//succeeded or not, so a silent dongle is asked every interval, not every pass
+//succeeded or not, so a silent dongle is asked every interval, not every pass - but a pass cut off by its bound (it waited
+//behind the real-time read of the dongle) is no attempt: the read is due again with the next pass
 @Slf4j
 @Component
 public class SolaxSettingsReader {
@@ -61,8 +62,10 @@ public class SolaxSettingsReader {
             .filter(this::due)
             .flatMap(due -> Mono.justOrEmpty(inverterRegistry.of(InverterBrand.SOLAX)))
             .filter(inverter -> inverter.address() != null && inverter.registrationNumber() != null)
-            .doOnNext(inverter -> attemptedAt.set(now))
-            .flatMap(this::read);
+            .flatMap(inverter -> {
+                final Instant before = attemptedAt.getAndSet(now);
+                return read(inverter).doOnCancel(() -> attemptedAt.compareAndSet(now, before));
+            });
     }
 
     private Mono<Void> read(final Inverter inverter) {

@@ -74,7 +74,9 @@ class SetDataTest {
 
     @Test
     void should_fail_on_a_setting_that_is_not_a_number() {
-        assertThatThrownBy(() -> SetData.parse(with(146, "\"80\""), JSON))
+        final String text = with(146, "\"80\"");
+
+        assertThatThrownBy(() -> SetData.parse(text, JSON))
             .isInstanceOf(SolaxCallException.class)
             .hasMessage("The dongle answered setting [146] that is not a number: \"80\"");
     }

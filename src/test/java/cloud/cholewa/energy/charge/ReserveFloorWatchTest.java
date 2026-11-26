@@ -149,6 +149,53 @@ class ReserveFloorWatchTest {
         assertThat(rows.getFirst().openedAt()).isEqualTo(NOW.plusMinutes(46));
     }
 
+    //the reserve written a moment ago and the read after it failed: the settings from before the write (Self Use) are
+    //still fresh, but they are not the inverter now
+    @Test
+    void should_not_judge_settings_read_before_the_last_write_of_the_reserve() {
+        inverter(SELF_USE);
+        fixture.clock.moveBy(Duration.ofSeconds(10));
+        fixture.reserveRow.set(ChargeSamples.reserveHeld().withWriteOutcome("sent")
+            .withWriteAttemptedAt(NOW.plusSeconds(10)));
+        for (int minute = 0; minute < 14; minute++) {
+            fixture.clock.moveBy(Duration.ofMinutes(1));
+            pass();
+        }
+        verify(fixture.publisher, never()).publishReminder(anyString());
+
+        minutesOf(11, SELF_USE);
+
+        verify(fixture.publisher, times(1)).publishReminder(contains("self use"));
+    }
+
+    //a start with an episode open in the table: reminded by its last notice, closed once the floor is right
+    @Test
+    void should_take_up_an_episode_open_in_the_table_after_a_start() {
+        rows.add(new SourceAlertEntity(5L, "solax", "reserve", NOW.minusHours(3), NOW.minusMinutes(59), null, null));
+
+        minutesOf(1, LOW_FLOOR);
+        verify(fixture.publisher, never()).publishReminder(anyString());
+        minutesOf(1, LOW_FLOOR);
+        verify(fixture.publisher, times(1)).publishReminder(contains("Still:"));
+
+        minutesOf(1, HELD);
+
+        assertThat(rows.getFirst().closedAt()).isEqualTo(NOW.plusMinutes(2));
+    }
+
+    //a reserve set until a time that passes while its episode is open: ended with an info, as one switched off
+    @Test
+    void should_close_the_episode_of_a_reserve_whose_until_passed() {
+        fixture.reserveRow.set(ChargeSamples.reserveHeld().withUntil(NOW.plusMinutes(12)));
+        minutesOf(11, LOW_FLOOR);
+        assertThat(rows).hasSize(1);
+
+        minutesOf(2, LOW_FLOOR);
+
+        verify(fixture.publisher).publishInfo(contains("The battery reserve is switched off"));
+        assertThat(rows.getFirst().closedAt()).isEqualTo(NOW.plusMinutes(12));
+    }
+
     //the table follows the broker: a warning that was not published stores nothing and is due again with the next pass
     @Test
     void should_store_nothing_until_the_warning_was_published() {
@@ -229,6 +276,6 @@ class ReserveFloorWatchTest {
 
     @Test
     void should_be_bounded_below_its_delay() {
-        assertThat(ReserveFloorWatch.LIMIT).isLessThan(Duration.ofMinutes(1));
+        assertThat(Duration.ofMinutes(1)).isGreaterThan(ReserveFloorWatch.LIMIT);
     }
 }

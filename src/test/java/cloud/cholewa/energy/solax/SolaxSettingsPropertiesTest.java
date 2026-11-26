@@ -15,7 +15,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 //application.yaml as the home profile reads it (HAS-518): the settings of the SOLAX every five minutes and twenty
 //seconds after a write, not known after a quarter of an hour; the units of a bare number and the bounds that refuse the
-//start
+//start - stale-after below twice the interval among them (one failed read would make the settings unknown)
 class SolaxSettingsPropertiesTest {
 
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
@@ -47,7 +47,8 @@ class SolaxSettingsPropertiesTest {
     @ValueSource(strings = {"energy.solax.settings.interval=PT30S", "energy.solax.settings.interval=61",
         "energy.solax.settings.interval=", "energy.solax.settings.after-write=4",
         "energy.solax.settings.after-write=121", "energy.solax.settings.stale-after=4",
-        "energy.solax.settings.stale-after=121"})
+        "energy.solax.settings.stale-after=121", "energy.solax.settings.stale-after=9",
+        "energy.solax.settings.interval=8"})
     void should_not_start_with_a_value_out_of_its_range(final String value) {
         contextRunner
             .withPropertyValues("spring.profiles.active=home", value)

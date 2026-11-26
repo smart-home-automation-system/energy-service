@@ -23,7 +23,8 @@ import java.util.concurrent.atomic.AtomicReference;
 
 //The battery reserve the inverter does not hold (HAS-518): every minute the reserve of the service against the
 //settings of the SOLAX read from its dongle (SolaxSettingsTracker, in memory - never a call to the dongle), judged by
-//ReserveFloorRules. It reads only - the three queries one after the other (pool 2), outside the lane of the commands.
+//ReserveFloorRules. Only settings read after the last write of the standing work mode are judged - older ones are the
+//inverter before that write, whatever their age. It reads only - the three queries one after the other (pool 2), outside the lane of the commands.
 //Kept in source_alert (kind reserve, source solax, V20): the table follows the broker, as the frequency watch - a row
 //is written only once its notice was published, so one that failed is due again with the next pass; a told row the
 //database did not take is held and stored first by the next pass, which decides nothing until it is (a notice is never
@@ -80,7 +81,9 @@ public class ReserveFloorWatch {
         return reserveService.read()
             .flatMap(row -> busy()
                 .map(busy -> ReserveFloorRules.see(ReserveRules.inForce(row.enabled(), row.until(), now), row.level(),
-                    settled(row) && !busy, settingsTracker.current().map(SolaxSettingsTracker.Read::settings))));
+                    settled(row) && !busy, settingsTracker.current()
+                        .filter(read -> readAfterTheWrite(read, row))
+                        .map(SolaxSettingsTracker.Read::settings))));
     }
 
     //a charge open or being ended: the inverter runs its Self Use for now, the end writes the reserve back
@@ -88,6 +91,12 @@ public class ReserveFloorWatch {
         return runs.findFirstByOrderByRequestedAtDesc()
             .map(ReserveService::busy)
             .defaultIfEmpty(false);
+    }
+
+    //settings read before the last write of the standing work mode say nothing of the inverter after it: a read that
+    //failed since must not leave the mode before the write judged for a quarter of an hour
+    private static boolean readAfterTheWrite(final SolaxSettingsTracker.Read read, final EnergyReserveEntity row) {
+        return row.writeAttemptedAt() == null || read.readAt().isAfter(row.writeAttemptedAt());
     }
 
     private static boolean settled(final EnergyReserveEntity row) {

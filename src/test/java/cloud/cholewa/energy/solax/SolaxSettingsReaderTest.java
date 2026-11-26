@@ -163,6 +163,43 @@ class SolaxSettingsReaderTest {
         assertThat(tracker.current()).isEmpty();
     }
 
+    //a pass the scheduler cut off while it waited for the dongle is no attempt: the read after a write is not lost
+    @Test
+    void should_read_with_the_next_pass_after_a_pass_that_was_cut_off() {
+        pass();
+        clock.moveBy(Duration.ofMinutes(1));
+        tracker.wrote();
+        clock.moveBy(Duration.ofSeconds(20));
+        when(client.readSetData(SOLAX)).thenReturn(Mono.never());
+
+        reader.readIfDue().as(StepVerifier::create).thenAwait(Duration.ofMillis(50)).thenCancel().verify();
+
+        when(client.readSetData(SOLAX)).thenReturn(Mono.just(RAISED));
+        clock.moveBy(Duration.ofSeconds(10));
+        pass();
+
+        verify(client, times(3)).readSetData(SOLAX);
+        assertThat(tracker.current().map(SolaxSettingsTracker.Read::settings)).contains(RAISED);
+    }
+
+    //the read of the interval between a write and its after-write leaves the read after the write due
+    @Test
+    void should_still_read_after_a_write_when_the_interval_read_came_just_before() {
+        pass();
+        clock.moveBy(Duration.ofMinutes(4).plusSeconds(55));
+        tracker.wrote();
+        clock.moveBy(Duration.ofSeconds(5));
+        pass();
+        clock.moveBy(Duration.ofSeconds(10));
+        pass();
+        verify(client, times(2)).readSetData(SOLAX);
+
+        clock.moveBy(Duration.ofSeconds(10));
+        pass();
+
+        verify(client, times(3)).readSetData(SOLAX);
+    }
+
     @Test
     void should_know_no_settings_before_the_first_read() {
         assertThat(tracker.current()).isEmpty();
@@ -171,6 +208,6 @@ class SolaxSettingsReaderTest {
 
     @Test
     void should_be_bounded_below_its_delay() {
-        assertThat(SolaxSettingsReader.LIMIT).isLessThan(Duration.ofSeconds(10));
+        assertThat(Duration.ofSeconds(10)).isGreaterThan(SolaxSettingsReader.LIMIT);
     }
 }

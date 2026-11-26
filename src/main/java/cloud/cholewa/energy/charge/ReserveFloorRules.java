@@ -13,11 +13,11 @@ import java.util.Optional;
 //down to it and never up (proven 2026-11-25), so a reserve raised - or lowered and raised again - is held only down to
 //the old, lower floor until the owner sets the Min SoC by hand. And a work mode changed outside the service holds no
 //reserve at all. What a pass sees:
-//- OFF - no reserve holds: an open episode ends with an info;
+//- OFF - no reserve holds: an open episode ends with an info.
 //- NOT_JUDGED - the settings of the inverter are not known, or the standing work mode is not the one in the inverter
 //  for now (a write pending or failed - the reserve tells that itself -, a charge going on or being ended): the count
-//  starts anew, an open episode stays open and is not reminded;
-//- FINE - Back Up with its Min SoC at the level or above: an open episode ends with an info;
+//  starts anew, an open episode stays open and is not reminded.
+//- FINE - Back Up with its Min SoC at the level or above: an open episode ends with an info.
 //- WRONG - not in Back Up, or its Min SoC below the level: in every pass for warnAfter opens an episode with a
 //  warning (opened at the first of them), then a reminder every reminderEvery from the last notice
 final class ReserveFloorRules {
@@ -49,7 +49,7 @@ final class ReserveFloorRules {
         }
     }
 
-    //inForce - the reserve holds; settled - its last write was sent or taken and no charge is open or being ended;
+    //inForce - the reserve holds. settled - its last write was sent or taken and no charge is open or being ended.
     //settings - of the inverter while fresh
     static Seen see(final boolean inForce, final Integer level, final boolean settled,
                     final Optional<SolaxSettings> settings) {

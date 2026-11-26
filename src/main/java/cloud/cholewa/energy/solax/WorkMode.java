@@ -21,7 +21,7 @@ public enum WorkMode {
         this.wireName = wireName;
     }
 
-    //the name of the API - the contract of the dashboard, pinned by WorkModeTest
+    //the name of the API - the contract of the dashboard, pinned by SetDataTest
     public String wireName() {
         return wireName;
     }

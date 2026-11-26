@@ -537,7 +537,9 @@ IntelliJ.
   - `SolaxSettingsReader` - a pass every 10 s (bounded at 9 s) that asks the dongle only when due: none yet, the last
     attempt `energy.solax.settings.interval` (PT5M) ago, or a write of the service `after-write` (PT20S) ago and not read
     since - `InverterCommands.write` notes every command the cloud took on `SolaxSettingsTracker`. An attempt counts
-    whether it succeeded, so a silent dongle is asked every interval; one WARN an hour per kind (`FailureLog`).
+    whether it succeeded, so a silent dongle is asked every interval; one WARN an hour per kind (`FailureLog`). A pass
+    cut off by its bound while it waited behind the real-time read is no attempt (`doOnCancel`) - the read after a write
+    is not lost. `stale-after` is at least twice the interval (checked at the start).
     `SolaxSettingsTracker.current()` answers the settings only for `stale-after` (PT15M) - three failed reads make them
     not known, never the settings of an hour ago.
   - **The API**: `inverter {workMode, minSoc, chargeTo, readAt}` in `GET /battery/reserve` and `GET /status`, left out
@@ -551,7 +553,13 @@ IntelliJ.
     `reminder-every` (PT1H), an info once it holds again or the reserve is switched off. **Not judged** - the count
     starts anew, an open episode stays and is not reminded: the settings not known, a write of the reserve `pending` or
     `failed` (the reserve tells that itself), `none`, and **a charge open or being ended** (the inverter runs its Self Use
-    until the end writes the reserve back - without this every charge longer than ten minutes would warn).
+    until the end writes the reserve back - without this every charge longer than ten minutes would warn). **Settings
+    read before the last write of the standing work mode are not judged either** (`write_attempted_at` of the reserve,
+    the /code-review of HAS-518): with the read after a write failing, the mode from before it stayed "fresh" for a
+    quarter of an hour and would have warned of a Self Use the inverter had left.
+  - Known and left: an episode open while nothing is judged for long (a Back Up Min SoC the dongle answers out of
+    0 - 100, a write that stays `failed`) stays open without a reminder; a save that committed but answered an error
+    makes the next pass fail on the unique index until a restart - as in `FrequencyWatch`, which this copies.
   - `source_alert` kind `reserve`, source `solax` (V20), **the table follows the broker** as the frequency watch: a row
     only once its notice was published, a told row the database did not take held and stored first by the next pass. A
     new kind reaches `GET /alerts` by itself - the dashboard prints it as it comes until HAS-519 words it.
