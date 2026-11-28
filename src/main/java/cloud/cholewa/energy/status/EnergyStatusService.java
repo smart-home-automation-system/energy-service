@@ -1,12 +1,15 @@
 package cloud.cholewa.energy.status;
 
 import cloud.cholewa.energy.api.model.InverterSettingsReply;
+import cloud.cholewa.energy.api.model.SheddingReply;
 import cloud.cholewa.energy.api.model.SourceStatusReply;
 import cloud.cholewa.energy.api.model.StatusReply;
 import cloud.cholewa.energy.frequency.FrequencyState;
 import cloud.cholewa.energy.meter.GridMeterState;
 import cloud.cholewa.energy.meter.GridMeterTracker;
 import cloud.cholewa.energy.outage.GridOutageService;
+import cloud.cholewa.energy.shedding.LoadSheddingWatch;
+import cloud.cholewa.energy.shedding.Shedding;
 import cloud.cholewa.energy.sofar.SofarState;
 import cloud.cholewa.energy.sofar.SofarTracker;
 import cloud.cholewa.energy.solax.SolaxSettingsTracker;
@@ -38,12 +41,18 @@ public class EnergyStatusService {
     private final GridOutageService gridOutageService;
     private final FrequencyState frequencyState;
     private final SolaxSettingsTracker settingsTracker;
+    private final LoadSheddingWatch loadSheddingWatch;
 
-    //the answer of GET /status: the sources, the grid with its frequency and the settings of the SOLAX
+    //the answer of GET /status: the sources, the grid with its frequency, the settings of the SOLAX and the load shedding
     public Mono<StatusReply> reply() {
         return status().zipWith(Mono.fromSupplier(frequencyState::current), (sources, frequency) ->
             new StatusReply(sources, gridOutageService.grid().withFrequency(frequency.hz(), frequency.off()),
-                settingsTracker.current().map(EnergyStatusService::inverter).orElse(null)));
+                settingsTracker.current().map(EnergyStatusService::inverter).orElse(null),
+                loadSheddingWatch.current().map(EnergyStatusService::shedding).orElse(null)));
+    }
+
+    private static SheddingReply shedding(final Shedding shedding) {
+        return new SheddingReply(shedding.active(), shedding.since(), shedding.endsAt());
     }
 
     //the settings of the SOLAX in the words of the API - of the battery reserve too

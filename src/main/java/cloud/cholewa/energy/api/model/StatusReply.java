@@ -7,14 +7,21 @@ import java.util.List;
 //GET /home/energy/status: every source of energy with whether it answers (HAS-325, HAS-327, HAS-328) and the grid as
 //the SOLAX sees it (HAS-334). An object since HAS-334, a bare list of the sources before - no reader of the list but
 //Bruno then; the dashboard (HAS-341) is built on this shape. Since HAS-518 inverter - the work mode and the Back Up
-//percentages of the SOLAX as read from its dongle, left out while not known
+//percentages of the SOLAX as read from its dongle, left out while not known. Since HAS-523 shedding - the load shedding
+//during an outage of the grid, left out while not known (after a start, before it was read from the database)
 public record StatusReply(
     List<SourceStatusReply> sources,
     GridStateReply grid,
-    @JsonInclude(JsonInclude.Include.NON_NULL) InverterSettingsReply inverter
+    @JsonInclude(JsonInclude.Include.NON_NULL) InverterSettingsReply inverter,
+    @JsonInclude(JsonInclude.Include.NON_NULL) SheddingReply shedding
 ) {
 
     public StatusReply(final List<SourceStatusReply> sources, final GridStateReply grid) {
-        this(sources, grid, null);
+        this(sources, grid, null, null);
+    }
+
+    public StatusReply(final List<SourceStatusReply> sources, final GridStateReply grid,
+                       final InverterSettingsReply inverter) {
+        this(sources, grid, inverter, null);
     }
 }

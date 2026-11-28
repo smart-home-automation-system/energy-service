@@ -112,6 +112,10 @@ energy:
   outage:
     low-soc: 20
     reminder-every: PT1H
+  # the load shedding during an outage of the grid (HAS-523): on at once with the grid lost, over once the grid is back
+  # without a break for stable-after (1 - 60 min, a bare number minutes)
+  shedding:
+    stable-after: PT10M
   # the silence of the sources (HAS-332): the dongle of the SOLAX not answering and the grid meter silent on MQTT and
   # RPC for this long is an alert, a reminder every reminder-every while it lasts, an info on its return
   availability:

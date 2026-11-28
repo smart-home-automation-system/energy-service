@@ -6,6 +6,7 @@ import cloud.cholewa.energy.database.EnergyAutomationEntity;
 import cloud.cholewa.energy.database.EnergyAutomationRepository;
 import cloud.cholewa.energy.database.PlannedOutageEntity;
 import cloud.cholewa.energy.frequency.FrequencyState;
+import cloud.cholewa.energy.shedding.LoadSheddingWatch;
 import cloud.cholewa.energy.solax.SolaxProperties;
 import cloud.cholewa.energy.solaxcloud.SolaxCloudException;
 import org.junit.jupiter.api.BeforeEach;
@@ -45,7 +46,7 @@ class AutomationWatchTest {
 
     //three runs an outage at most, five minutes after a failed one
     private AutomationWatch watch() {
-        return new AutomationWatch(new AutomationService(settings, kit.clock()), kit.outages(), kit.repository(),
+        return new AutomationWatch(new AutomationService(settings, mock(LoadSheddingWatch.class), kit.clock()), kit.outages(), kit.repository(),
             kit.service(), plan, kit.publisher(), kit.outageLane(),
             new SolaxProperties(Duration.ofSeconds(15), Duration.ofMinutes(1), 26.5), frequencyState,
             new AutomationProperties(3, Duration.ofMinutes(5)), kit.clock());
@@ -70,7 +71,7 @@ class AutomationWatchTest {
 
     private void switchOn(final boolean on) {
         when(settings.findById(EnergyAutomationEntity.ROW_ID)).thenReturn(Mono.just(
-            new EnergyAutomationEntity(1, on, 100, 5.0, 60, null)));
+            new EnergyAutomationEntity(1, on, 100, 5.0, 60, null, true)));
     }
 
     private void pass() {

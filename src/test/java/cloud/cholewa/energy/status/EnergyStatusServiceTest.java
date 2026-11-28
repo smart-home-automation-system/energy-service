@@ -2,11 +2,14 @@ package cloud.cholewa.energy.status;
 
 import cloud.cholewa.energy.api.model.GridStateReply;
 import cloud.cholewa.energy.api.model.InverterSettingsReply;
+import cloud.cholewa.energy.api.model.SheddingReply;
 import cloud.cholewa.energy.api.model.SourceStatusReply;
 import cloud.cholewa.energy.meter.GridMeterTracker;
 import cloud.cholewa.energy.frequency.FrequencyState;
 import cloud.cholewa.energy.meter.GridMeterState;
 import cloud.cholewa.energy.outage.GridOutageService;
+import cloud.cholewa.energy.shedding.LoadSheddingWatch;
+import cloud.cholewa.energy.shedding.Shedding;
 import cloud.cholewa.energy.solax.SolaxSamples;
 import cloud.cholewa.energy.sofar.SofarSamples;
 import cloud.cholewa.energy.sofar.SofarState;
@@ -41,8 +44,9 @@ class EnergyStatusServiceTest {
     private final GridOutageService gridOutageService = mock(GridOutageService.class);
     private final FrequencyState frequencyState = mock(FrequencyState.class);
     private final SolaxSettingsTracker settingsTracker = mock(SolaxSettingsTracker.class);
+    private final LoadSheddingWatch loadSheddingWatch = mock(LoadSheddingWatch.class);
     private final EnergyStatusService energyStatusService = new EnergyStatusService(tracker, solaxTracker,
-        cloudTracker, sofarTracker, gridOutageService, frequencyState, settingsTracker);
+        cloudTracker, sofarTracker, gridOutageService, frequencyState, settingsTracker, loadSheddingWatch);
 
     @BeforeEach
     void setUp() {
@@ -72,6 +76,29 @@ class EnergyStatusServiceTest {
             .as(StepVerifier::create)
             .assertNext(reply -> assertThat(reply.inverter()).isEqualTo(new InverterSettingsReply(
                 "feed-in priority", 75, 80, LocalDateTime.of(2026, 11, 26, 9, 6))))
+            .verifyComplete();
+    }
+
+    //the load shedding of its watch, left out until it was read after a start (HAS-523)
+    @Test
+    void should_answer_the_load_shedding_once_it_is_known() {
+        when(tracker.current()).thenReturn(new GridMeterState(null, null, null, null, null, null));
+        when(gridOutageService.grid()).thenReturn(GridStateReply.notKnown());
+        when(frequencyState.current()).thenReturn(new FrequencyState.Snapshot(null, null));
+        when(loadSheddingWatch.current()).thenReturn(Optional.empty());
+
+        energyStatusService.reply()
+            .as(StepVerifier::create)
+            .assertNext(reply -> assertThat(reply.shedding()).isNull())
+            .verifyComplete();
+
+        when(loadSheddingWatch.current()).thenReturn(Optional.of(new Shedding(true,
+            LocalDateTime.of(2026, 11, 28, 12, 0), LocalDateTime.of(2026, 11, 28, 13, 10))));
+
+        energyStatusService.reply()
+            .as(StepVerifier::create)
+            .assertNext(reply -> assertThat(reply.shedding()).isEqualTo(new SheddingReply(true,
+                LocalDateTime.of(2026, 11, 28, 12, 0), LocalDateTime.of(2026, 11, 28, 13, 10))))
             .verifyComplete();
     }
 

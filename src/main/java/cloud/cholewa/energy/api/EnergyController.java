@@ -2,8 +2,6 @@ package cloud.cholewa.energy.api;
 
 import cloud.cholewa.energy.alert.AlertService;
 import cloud.cholewa.energy.api.model.AlertReply;
-import cloud.cholewa.energy.api.model.AutomationReply;
-import cloud.cholewa.energy.api.model.AutomationRequest;
 import cloud.cholewa.energy.api.model.BatteryReply;
 import cloud.cholewa.energy.api.model.ChargeReply;
 import cloud.cholewa.energy.api.model.ChargeRequest;
@@ -20,7 +18,6 @@ import cloud.cholewa.energy.api.model.MonthsReply;
 import cloud.cholewa.energy.api.model.OutageReply;
 import cloud.cholewa.energy.api.model.PlannedOutageReply;
 import cloud.cholewa.energy.api.model.StatusReply;
-import cloud.cholewa.energy.automation.AutomationService;
 import cloud.cholewa.energy.charge.ChargeService;
 import cloud.cholewa.energy.charge.ReserveService;
 import cloud.cholewa.energy.days.DaysService;
@@ -71,7 +68,6 @@ public class EnergyController {
     private final AlertService alertService;
     private final PlannedOutageService plannedOutageService;
     private final ChargeService chargeService;
-    private final AutomationService automationService;
     private final ReserveService reserveService;
     private final ForecastService forecastService;
     private final ElicznikService elicznikService;
@@ -126,17 +122,6 @@ public class EnergyController {
     @PutMapping("outages/planned/{id}/unskip")
     Mono<PlannedOutageReply> unskipOutage(@PathVariable final long id) {
         return plannedOutageService.skip(id, false);
-    }
-
-    //the settings of the automatic charge before a planned outage, the switch first (HAS-338)
-    @GetMapping("automation")
-    Mono<AutomationReply> automation() {
-        return automationService.settings();
-    }
-
-    @PutMapping("automation")
-    Mono<AutomationReply> replaceAutomation(@RequestBody final AutomationRequest request) {
-        return automationService.replace(request);
     }
 
     //the battery reserve held by the Self Use floor of the SOLAX and what became of its last write (HAS-494)

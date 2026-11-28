@@ -2,8 +2,11 @@ package cloud.cholewa.energy.automation;
 
 import cloud.cholewa.energy.api.model.AutomationReply;
 import cloud.cholewa.energy.api.model.AutomationRequest;
+import cloud.cholewa.energy.api.model.SheddingRequest;
 import cloud.cholewa.energy.database.EnergyAutomationEntity;
 import cloud.cholewa.energy.database.EnergyAutomationRepository;
+import cloud.cholewa.energy.error.EnergyException;
+import cloud.cholewa.energy.shedding.LoadSheddingWatch;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -14,14 +17,30 @@ import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 
 //The settings of the automatic charge before a planned outage (HAS-338): the one row of energy_automation, read and
-//replaced whole. Turning the switch off cancels no charge already running - the panel cancels it with DELETE
+//replaced whole. Turning the switch off cancels no charge already running - the panel cancels it with DELETE.
+//Since HAS-523 the switch of the load shedding in the same row, written by a request of its own; once stored it is held
+//by the watch of the load shedding at once - turned off, its next pass ends an episode that lasts
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class AutomationService {
 
     private final EnergyAutomationRepository repository;
+    private final LoadSheddingWatch loadSheddingWatch;
     private final Clock clock;
+
+    public Mono<AutomationReply> replaceShedding(final SheddingRequest request) {
+        return Mono.justOrEmpty(request.enabled())
+            .switchIfEmpty(Mono.error(() -> EnergyException.invalidAutomation("enabled is required")))
+            .flatMap(on -> read().flatMap(held -> repository.save(held
+                .withLoadShedding(on)
+                .withUpdatedAt(LocalDateTime.now(clock).truncatedTo(ChronoUnit.MICROS)))))
+            .doOnNext(saved -> {
+                loadSheddingWatch.switched(saved.loadShedding());
+                log.info("The load shedding during an outage of the grid set: {}", saved.loadShedding() ? "on" : "off");
+            })
+            .map(AutomationService::reply);
+    }
 
     public Mono<AutomationReply> settings() {
         return read().map(AutomationService::reply);
@@ -50,6 +69,6 @@ public class AutomationService {
 
     static AutomationReply reply(final EnergyAutomationEntity row) {
         return new AutomationReply(row.chargeBeforeOutage(), row.targetSoc(), row.chargePowerKw(), row.marginMinutes(),
-            row.updatedAt());
+            row.updatedAt(), row.loadShedding());
     }
 }
