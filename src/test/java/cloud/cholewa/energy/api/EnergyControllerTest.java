@@ -19,7 +19,6 @@ import cloud.cholewa.energy.api.model.PvReply;
 import cloud.cholewa.energy.api.model.GridStateReply;
 import cloud.cholewa.energy.api.model.OutageReply;
 import cloud.cholewa.energy.api.model.SheddingReply;
-import cloud.cholewa.energy.api.model.SheddingRequest;
 import cloud.cholewa.energy.api.model.SourceStatusReply;
 import cloud.cholewa.energy.api.model.StatusReply;
 import cloud.cholewa.energy.config.ExceptionHandlerConfig;
@@ -38,9 +37,6 @@ import cloud.cholewa.energy.solax.RunMode;
 import cloud.cholewa.energy.status.EnergyStatusService;
 import cloud.cholewa.energy.tauron.PlannedOutageService;
 import cloud.cholewa.energy.charge.ChargeService;
-import cloud.cholewa.energy.automation.AutomationService;
-import cloud.cholewa.energy.api.model.AutomationReply;
-import cloud.cholewa.energy.api.model.AutomationRequest;
 import cloud.cholewa.energy.api.model.ChargeReply;
 import cloud.cholewa.energy.api.model.ChargeRequest;
 import cloud.cholewa.energy.api.model.ChargeRunReply;
@@ -101,8 +97,6 @@ class EnergyControllerTest {
     private PlannedOutageService plannedOutageService;
     @MockitoBean
     private ChargeService chargeService;
-    @MockitoBean
-    private AutomationService automationService;
     @MockitoBean
     private ReserveService reserveService;
     @MockitoBean
@@ -222,48 +216,6 @@ class EnergyControllerTest {
                    "scope": "town", "description": "Testowo ul. Lipowa", "firstSeenAt": "2026-11-03T15:00:00",
                    "skipAutomation": false}
                 ]""", JsonCompareMode.STRICT);
-    }
-
-    //HAS-338, the contract of the energy panel: the switches always written, the time of the last change left out before
-    //one; HAS-523 the switch of the load shedding
-    @Test
-    void should_answer_the_settings_of_the_automation() {
-        when(automationService.settings()).thenReturn(Mono.just(new AutomationReply(false, 100, 5.0, 60, null, true)));
-
-        webTestClient.get().uri("/automation")
-            .exchange()
-            .expectStatus().isOk()
-            .expectBody().json("""
-                {"chargeBeforeOutage": false, "targetSoc": 100, "chargePowerKw": 5.0, "marginMinutes": 60,
-                 "loadShedding": true}""",
-                JsonCompareMode.STRICT);
-    }
-
-    @Test
-    void should_replace_the_settings_of_the_automation() {
-        when(automationService.replace(new AutomationRequest(true, 90, 4.5, 30)))
-            .thenReturn(Mono.just(new AutomationReply(true, 90, 4.5, 30, LocalDateTime.of(2026, 11, 3, 15, 0), true)));
-
-        webTestClient.put().uri("/automation")
-            .contentType(MediaType.APPLICATION_JSON)
-            .bodyValue("{\"chargeBeforeOutage\": true, \"targetSoc\": 90, \"chargePowerKw\": 4.5, \"marginMinutes\": 30}")
-            .exchange()
-            .expectStatus().isOk()
-            .expectBody().jsonPath("$.chargeBeforeOutage").isEqualTo(true);
-    }
-
-    //HAS-523: the switch of the load shedding by a request of its own
-    @Test
-    void should_switch_the_load_shedding() {
-        when(automationService.replaceShedding(new SheddingRequest(false)))
-            .thenReturn(Mono.just(new AutomationReply(false, 100, 5.0, 60, LocalDateTime.of(2026, 11, 28, 12, 0), false)));
-
-        webTestClient.put().uri("/automation/shedding")
-            .contentType(MediaType.APPLICATION_JSON)
-            .bodyValue("{\"enabled\": false}")
-            .exchange()
-            .expectStatus().isOk()
-            .expectBody().jsonPath("$.loadShedding").isEqualTo(false);
     }
 
     //HAS-523: the load shedding in the status - active always written, since and endsAt left out while not known

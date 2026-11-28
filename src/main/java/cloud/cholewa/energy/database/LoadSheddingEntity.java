@@ -6,8 +6,8 @@ import org.springframework.data.relational.core.mapping.Table;
 
 import java.time.LocalDateTime;
 
-//A row of load_shedding (V22, HAS-523): one episode of load shedding, endedAt null while it lasts. endedBy - grid (the
-//grid back for the stable time) or switch (the switch of the energy page turned off), null while it lasts
+//A row of load_shedding (V22, HAS-523): one episode of load shedding, with no end while it lasts. What ended it is the
+//grid, back for the stable time, or the switch of the energy page turned off - none while it lasts
 @Table("load_shedding")
 public record LoadSheddingEntity(
     @Id Long id,
