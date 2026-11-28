@@ -18,6 +18,8 @@ import cloud.cholewa.energy.api.model.PhaseReply;
 import cloud.cholewa.energy.api.model.PvReply;
 import cloud.cholewa.energy.api.model.GridStateReply;
 import cloud.cholewa.energy.api.model.OutageReply;
+import cloud.cholewa.energy.api.model.SheddingReply;
+import cloud.cholewa.energy.api.model.SheddingRequest;
 import cloud.cholewa.energy.api.model.SourceStatusReply;
 import cloud.cholewa.energy.api.model.StatusReply;
 import cloud.cholewa.energy.config.ExceptionHandlerConfig;
@@ -222,23 +224,25 @@ class EnergyControllerTest {
                 ]""", JsonCompareMode.STRICT);
     }
 
-    //HAS-338, the contract of the energy panel: the switch always written, the time of the last change left out before one
+    //HAS-338, the contract of the energy panel: the switches always written, the time of the last change left out before
+    //one; HAS-523 the switch of the load shedding
     @Test
     void should_answer_the_settings_of_the_automation() {
-        when(automationService.settings()).thenReturn(Mono.just(new AutomationReply(false, 100, 5.0, 60, null)));
+        when(automationService.settings()).thenReturn(Mono.just(new AutomationReply(false, 100, 5.0, 60, null, true)));
 
         webTestClient.get().uri("/automation")
             .exchange()
             .expectStatus().isOk()
             .expectBody().json("""
-                {"chargeBeforeOutage": false, "targetSoc": 100, "chargePowerKw": 5.0, "marginMinutes": 60}""",
+                {"chargeBeforeOutage": false, "targetSoc": 100, "chargePowerKw": 5.0, "marginMinutes": 60,
+                 "loadShedding": true}""",
                 JsonCompareMode.STRICT);
     }
 
     @Test
     void should_replace_the_settings_of_the_automation() {
         when(automationService.replace(new AutomationRequest(true, 90, 4.5, 30)))
-            .thenReturn(Mono.just(new AutomationReply(true, 90, 4.5, 30, LocalDateTime.of(2026, 11, 3, 15, 0))));
+            .thenReturn(Mono.just(new AutomationReply(true, 90, 4.5, 30, LocalDateTime.of(2026, 11, 3, 15, 0), true)));
 
         webTestClient.put().uri("/automation")
             .contentType(MediaType.APPLICATION_JSON)
@@ -246,6 +250,35 @@ class EnergyControllerTest {
             .exchange()
             .expectStatus().isOk()
             .expectBody().jsonPath("$.chargeBeforeOutage").isEqualTo(true);
+    }
+
+    //HAS-523: the switch of the load shedding by a request of its own
+    @Test
+    void should_switch_the_load_shedding() {
+        when(automationService.replaceShedding(new SheddingRequest(false)))
+            .thenReturn(Mono.just(new AutomationReply(false, 100, 5.0, 60, LocalDateTime.of(2026, 11, 28, 12, 0), false)));
+
+        webTestClient.put().uri("/automation/shedding")
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue("{\"enabled\": false}")
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody().jsonPath("$.loadShedding").isEqualTo(false);
+    }
+
+    //HAS-523: the load shedding in the status - active always written, since and endsAt left out while not known
+    @Test
+    void should_answer_the_status_with_the_load_shedding() {
+        when(energyStatusService.reply()).thenReturn(Mono.just(new StatusReply(List.of(), GridStateReply.notKnown(),
+            null, new SheddingReply(true, LocalDateTime.of(2026, 11, 28, 12, 0), null))));
+
+        webTestClient.get().uri("/status")
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody().json("""
+                {"sources": [], "grid": {"state": null, "frequencyOff": null},
+                 "shedding": {"active": true, "since": "2026-11-28T12:00:00"}}""",
+                JsonCompareMode.STRICT);
     }
 
     //HAS-494, the contract of the reserve card of the energy page (HAS-496): written out whole

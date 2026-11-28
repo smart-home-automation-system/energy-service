@@ -15,7 +15,7 @@ Tauron (HAS-337), the charge of the battery (HAS-336) and its automation before 
 summary (HAS-339), the irradiance forecast (HAS-371) and its judgement and calibration (HAS-372), the readings of the
 eLicznik portal (HAS-340), the battery reserve (HAS-494), the grid frequency alert (HAS-503), the history of the voltage, the current and the
 frequency (HAS-506), the outages seen after the fact (HAS-505), the settings of the SOLAX read from its dongle
-(HAS-518) and the battery below its reserve (HAS-495), and reviews them in
+(HAS-518), the battery below its reserve (HAS-495) and the state of the load shedding (HAS-523), and reviews them in
 IntelliJ.
 
 ## Role in the system
@@ -44,7 +44,7 @@ IntelliJ.
   reserve (HAS-495), Discord only.
 - Uses libraries: `cholewa-commons` 2.0.0 since HAS-494 (Boot 4.2.0, `spring-boot-starter-rabbitmq`; 1.14.0 since HAS-340) (the pooled `ConnectionFactory`, the required
   properties, the scheduler pool and `ScheduledPass`, the error contract, `NotificationConnection` and the
-  `...Sms` methods of `NotificationPublisher` - HAS-334), `smart-home-sdk` 1.25.0 since HAS-494 (a no-op bump - the registry is read by
+  `...Sms` methods of `NotificationPublisher` - HAS-334), `smart-home-sdk` 1.27.0 since HAS-523 (a no-op bump - the household events of the load shedding are published from HAS-525; the registry is read by
   `?kind=inverter`; the kind `inverter` and `InverterBinding`, HAS-326),
   `shelly-client` 2.7.0 since HAS-340 **with its beans on** (`ShellyRpcClient`, `ShellyGen1Client`,
   `ShellyMqttDecoder`; pinned by `EnergyServiceApplicationTest`) - 2.3.0 brought `EmStatus`, `EmDataStatus`
@@ -93,7 +93,8 @@ IntelliJ.
   `@Scheduled` method is wrapped in `ScheduledPass.bounded`, its limit below its delay and pinned by a
   test that hangs the pass (the reconciliation 1 min, the snapshot 50 s); the scheduler has the pool of
   10 of the library.
-  The outage watch: every 15 s, bounded at 14 s. The monitor of the sources: every minute, bounded at 50 s.
+  The outage watch: every 15 s, bounded at 14 s. The load shedding watch: every 15 s, bounded at 14 s. The monitor of
+  the sources: every minute, bounded at 50 s.
 - **The broker**: one connection, the auto-configured one, to `/device` (user `device`, `rabbitmq-password`),
   the listener with manual ack, prefetch 3 and observation (`EnergyServiceApplicationTest`). The notifications
   go over a second connection that is **not a bean** (`NotificationConnection` of `cholewa-commons`, built by
@@ -596,6 +597,45 @@ IntelliJ.
     battery that cannot be read leaves it out and never fails the answer. `ReserveService` reads the battery for it
     (`BatteryService`, the dongle or the SolaX cloud standing for it).
   - **Proven by a real event, never staged** (DoD): not seen yet.
+- **The load shedding during an outage of the grid** (HAS-523, epic HAS-520, package `shedding`) - what is easy to
+  break:
+  - **The state only - nothing is switched yet**: the plugs (HAS-524), the household messages (HAS-525), aircon-service
+    and the dashboard follow `LoadSheddingWatch.current()` (`Shedding`: active, since, endsAt) and `GET /status.shedding`.
+  - **The grid is the SOLAX's alone**, as `GET /status` answers it (`GridOutageService.grid()`: two readings in a row
+    decide; a silent SOLAX is not known). `SheddingRules` (pure, `SheddingRulesTest`): **on at once** with the grid lost
+    and the switch on (owner, 2026-11-28 - not below a threshold of the battery); **over** once the grid is back without
+    a break for `energy.shedding.stable-after` (PT10M, 1 - 60 min, a bare number minutes), counted from the return, anew
+    after every loss - the frequency not judged (a generator of Tauron is the grid) - or at once with the switch off. A
+    grid not known never starts it and, while it lasts, neither counts as back nor as lost. After a pod start the return
+    is counted from the first two readings (the grid watch knows no earlier return), so a restart may lengthen it by its
+    downtime.
+  - `LoadSheddingWatch` (every 15 s, 5 s after the grid watch's first pass, bounded at 14 s) runs them **memory first** as
+    `GridOutageWatch`: nothing before the open episode and the switch were read (a failed read tried again next pass),
+    then the decision held, then the rows stored. In an outage the internet may be down with the grid, so **the rows the
+    database does not take wait in a list, the oldest first, one an episode** (`SheddingState.unsaved`; the
+    /code-review of HAS-523): the end of an episode is stored before the start of the next, and a row waiting behind
+    one of its episode just stored takes its id - an update, never a second row. The first refused save ends the pass;
+    the rest is tried in order with the next one.
+  - **The switch** is `energy_automation.load_shedding` (V22, **on by default** - owner, 2026-11-25), written alone by
+    `PUT /automation/shedding` `{"enabled": true|false}` (`INVALID_AUTOMATION` without it) so the `PUT /automation` of the
+    dashboard keeps its four fields; `GET /automation` answers `loadShedding`. Once stored it is held by the watch at once
+    (`switched`, kept apart from the decision - a pass in flight never undoes it; set before the first read it wins
+    over the stored value). Off ends an episode with the next pass (`ended_by` `switch`).
+  - `load_shedding` (V22): one row an episode, at most one open (partial unique index `load_shedding_one_open`), `ended_at`
+    and `ended_by` (`grid` / `switch`) together (`LoadSheddingRepositoryTest` on PostgreSQL).
+  - `GET /status.shedding`: `active` always written, `since` and `endsAt` (the return plus the stable time) left out when
+    none; the whole object left out until it was read after a start. Known and left (the /code-review of HAS-523):
+    `endsAt` stays as it was while the SOLAX goes silent after a return, so it may lie in the past while active; a save
+    that committed but answered an error leaves the open episode without its id and the next insert fails on the unique
+    index until a restart - as in `FrequencyWatch`.
+  - **Rehearsed** (2026-11-28): the released 0.24.0 image applied V1-V21 on a throwaway PostgreSQL with SSL (a user with
+    `USAGE, CREATE` on `public` only), an open `grid_outage` row stored, the new jar V22: the switch on, the outage "still
+    open", the load shedding on 25 s after the start and its row stored; a restart logged "still on" and stored no second
+    row; `PUT /automation` with its four fields kept the switch, `PUT /automation/shedding {}` answered 400
+    `INVALID_AUTOMATION`, `{"enabled": false}` ended the episode with the next pass (`ended_by` `switch`), `/status`
+    answered `{"active": false}`; a second open row refused by the index.
+  - Proven by a real outage only (owner rule: no grid cut on purpose): the state seen on it and its end 10 minutes after
+    the return.
 - **The planned outages of Tauron** (HAS-337, package `tauron`) - what is easy to break:
   - **The API** (the one of the Home Assistant integration Eales/tauron-dystrybucja, checked 2026-11-03): `cities?partName=`,
     `streets?partName=&ownerGAID=<the GAID of the town>` (not its OwnerGAID - that answers an empty list), `outages/address`

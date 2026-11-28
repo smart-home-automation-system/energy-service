@@ -76,13 +76,13 @@ class AutomationRepositoryTest {
     @Test
     void should_hold_the_settings_with_the_switch_off_by_default() {
         settings.findById(EnergyAutomationEntity.ROW_ID).as(StepVerifier::create)
-            .assertNext(row -> assertThat(row).isEqualTo(new EnergyAutomationEntity(1, false, 100, 5.0, 60, null)))
+            .assertNext(row -> assertThat(row).isEqualTo(new EnergyAutomationEntity(1, false, 100, 5.0, 60, null, true)))
             .verifyComplete();
     }
 
     @Test
     void should_update_the_settings_and_refuse_them_out_of_bounds() {
-        final EnergyAutomationEntity on = new EnergyAutomationEntity(1, true, 90, 4.5, 30, NOW);
+        final EnergyAutomationEntity on = new EnergyAutomationEntity(1, true, 90, 4.5, 30, NOW, true);
         settings.save(on).then(settings.findById(1)).as(StepVerifier::create).expectNext(on).verifyComplete();
 
         settings.save(on.withChargePowerKw(8.5)).as(StepVerifier::create)

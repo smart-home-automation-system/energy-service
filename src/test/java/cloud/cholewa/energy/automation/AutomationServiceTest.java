@@ -2,10 +2,12 @@ package cloud.cholewa.energy.automation;
 
 import cloud.cholewa.energy.api.model.AutomationReply;
 import cloud.cholewa.energy.api.model.AutomationRequest;
+import cloud.cholewa.energy.api.model.SheddingRequest;
 import cloud.cholewa.energy.database.EnergyAutomationEntity;
 import cloud.cholewa.energy.database.EnergyAutomationRepository;
 import cloud.cholewa.energy.error.EnergyError;
 import cloud.cholewa.energy.error.EnergyException;
+import cloud.cholewa.energy.shedding.LoadSheddingWatch;
 import cloud.cholewa.energy.solax.SolaxSamples;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,6 +19,8 @@ import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -28,29 +32,59 @@ class AutomationServiceTest {
 
     private static final LocalDateTime NOW = LocalDateTime.of(2026, 11, 3, 15, 0);
     private final EnergyAutomationRepository repository = mock(EnergyAutomationRepository.class);
-    private final AutomationService service = new AutomationService(repository,
+    private final LoadSheddingWatch loadSheddingWatch = mock(LoadSheddingWatch.class);
+    private final AutomationService service = new AutomationService(repository, loadSheddingWatch,
         Clock.fixed(NOW.atZone(SolaxSamples.HOUSE).toInstant(), SolaxSamples.HOUSE));
 
     @BeforeEach
     void setUp() {
         when(repository.findById(EnergyAutomationEntity.ROW_ID)).thenReturn(Mono.just(
-            new EnergyAutomationEntity(1, false, 100, 5.0, 60, null)));
+            new EnergyAutomationEntity(1, false, 100, 5.0, 60, null, true)));
         when(repository.save(any())).thenAnswer(call -> Mono.just(call.getArgument(0)));
+    }
+
+    //HAS-523: the switch of the load shedding stored alone - the settings of the charge kept - and held by its watch
+    @Test
+    void should_switch_the_load_shedding_and_keep_the_settings_of_the_charge() {
+        service.replaceShedding(new SheddingRequest(false)).as(StepVerifier::create)
+            .expectNext(new AutomationReply(false, 100, 5.0, 60, NOW, false))
+            .verifyComplete();
+        verify(repository).save(new EnergyAutomationEntity(1, false, 100, 5.0, 60, NOW, false));
+        verify(loadSheddingWatch).switched(false);
+    }
+
+    @Test
+    void should_refuse_a_switch_without_its_value_and_store_nothing() {
+        service.replaceShedding(new SheddingRequest(null)).as(StepVerifier::create)
+            .verifyErrorSatisfies(failure -> assertThat(failure).isInstanceOfSatisfying(EnergyException.class,
+                refused -> assertThat(refused.getError()).isEqualTo(EnergyError.INVALID_AUTOMATION)));
+        verify(repository, never()).save(any());
+        verify(loadSheddingWatch, never()).switched(anyBoolean());
+    }
+
+    //a switch the database did not take is not held by the watch either
+    @Test
+    void should_not_hold_a_switch_the_database_did_not_take() {
+        doReturn(Mono.error(new IllegalStateException("database down"))).when(repository).save(any());
+
+        service.replaceShedding(new SheddingRequest(false)).as(StepVerifier::create)
+            .verifyErrorMessage("database down");
+        verify(loadSheddingWatch, never()).switched(anyBoolean());
     }
 
     @Test
     void should_answer_the_settings() {
         service.settings().as(StepVerifier::create)
-            .expectNext(new AutomationReply(false, 100, 5.0, 60, null))
+            .expectNext(new AutomationReply(false, 100, 5.0, 60, null, true))
             .verifyComplete();
     }
 
     @Test
     void should_replace_the_settings_whole() {
         service.replace(new AutomationRequest(true, 90, 4.5, 30)).as(StepVerifier::create)
-            .expectNext(new AutomationReply(true, 90, 4.5, 30, NOW))
+            .expectNext(new AutomationReply(true, 90, 4.5, 30, NOW, true))
             .verifyComplete();
-        verify(repository).save(new EnergyAutomationEntity(1, true, 90, 4.5, 30, NOW));
+        verify(repository).save(new EnergyAutomationEntity(1, true, 90, 4.5, 30, NOW, true));
     }
 
     @Test

@@ -19,6 +19,7 @@ import cloud.cholewa.energy.api.model.InverterReply;
 import cloud.cholewa.energy.api.model.MonthsReply;
 import cloud.cholewa.energy.api.model.OutageReply;
 import cloud.cholewa.energy.api.model.PlannedOutageReply;
+import cloud.cholewa.energy.api.model.SheddingRequest;
 import cloud.cholewa.energy.api.model.StatusReply;
 import cloud.cholewa.energy.automation.AutomationService;
 import cloud.cholewa.energy.charge.ChargeService;
@@ -137,6 +138,12 @@ public class EnergyController {
     @PutMapping("automation")
     Mono<AutomationReply> replaceAutomation(@RequestBody final AutomationRequest request) {
         return automationService.replace(request);
+    }
+
+    //HAS-523: the switch of the load shedding during an outage of the grid, apart from the settings of the charge
+    @PutMapping("automation/shedding")
+    Mono<AutomationReply> replaceShedding(@RequestBody final SheddingRequest request) {
+        return automationService.replaceShedding(request);
     }
 
     //the battery reserve held by the Self Use floor of the SOLAX and what became of its last write (HAS-494)
